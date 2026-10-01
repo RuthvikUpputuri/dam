@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
+#VERSION="1.1.0"
+#
 # =============================================================================
 # @title        Docker App Manager (DAM)
 # @description  A powerful, centralized lifecycle manager for Docker Compose applications.
@@ -8,10 +10,12 @@
 #               bulk operations (start, stop, update, clean) across multiple apps.
 #
 # @author       Ruthvik Upputuri
-# @repository   https://github.com/RuthvikUpputuri/dam
+# @repository   https://gh.upputuri.in/dam
 # @license      MIT License
 # @created      September 2026
 # =============================================================================
+#
+#Always run shellcheck after making changes and before committing.
 #
 # Supports all major app lifecycle operations in one script:
 #   - start   : start app containers (create if needed)
@@ -60,7 +64,7 @@ set -uo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 # Set this to the raw URL of your script (e.g. GitHub raw link) for easy self-updating
-UPDATE_URL="https://raw.githubusercontent.com/RuthvikUpputuri/dam/main/dam.sh"
+UPDATE_URL="https://gh.upputuri.in/dam.sh"
 CONFIG_FILE="/etc/docker-app-manager.conf"
 
 if [[ -f "$CONFIG_FILE" ]]; then
@@ -85,6 +89,7 @@ fi
 
 declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
 declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
+MAX_SEARCH_DEPTH="${MAX_SEARCH_DEPTH:-5}"
 
 CMD_PREFIX="${CUSTOM_CMD_NAME:-}"
 if [[ -n "$CMD_PREFIX" ]]; then
@@ -150,7 +155,7 @@ find_app_dir() {
             if $has_compose; then
                 found+=("$match")
             fi
-        done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth 5 "${FIND_PRUNE_ARGS[@]}" -type d -name "$target" -print0 2>/dev/null)
+        done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -name "$target" -print0 2>/dev/null)
         
         if [[ ${#found[@]} -eq 1 ]]; then
             APP_DIR_CACHE["$target"]="${found[0]}"
@@ -281,6 +286,23 @@ has_compose_files() {
     return 1
 }
 
+get_app_compose_file() {
+    local dir="$1"
+    for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+        if [[ -f "$dir/$cf" ]]; then
+            echo "$cf"
+            return 0
+        fi
+    done
+    for f in "$dir"/update*.sh; do
+        if [[ -f "$f" ]]; then
+            basename "$f"
+            return 0
+        fi
+    done
+    echo "-"
+}
+
 has_update_files() {
     local dir="$1"
     has_compose_files "$dir" && return 0
@@ -366,7 +388,7 @@ list_available_apps() {
             elif $valid; then
                 apps+=("$name")
             fi
-        done < <(find "$sdir" -mindepth 1 -maxdepth 5 "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
+        done < <(find "$sdir" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
 
         if [[ ${#apps[@]} -gt 0 || ${#excluded_apps[@]} -gt 0 ]]; then
             $first_dir || echo ""
@@ -383,6 +405,92 @@ list_available_apps() {
             fi
         fi
     done
+}
+
+inventory_apps_table() {
+    local valid_search_dirs=()
+    for d in "${SEARCH_DIRS[@]}"; do
+        [[ -d "$d" ]] && valid_search_dirs+=("$d")
+    done
+    [[ ${#valid_search_dirs[@]} -eq 0 ]] && return
+
+    declare -A app_status
+    if docker info >/dev/null 2>&1; then
+        while IFS='|' read -r project state; do
+            [[ -z "$project" ]] && continue
+            if [[ "$state" == "running" ]]; then
+                app_status["$project"]="running"
+            elif [[ -z "${app_status["$project"]:-}" ]]; then
+                app_status["$project"]="$state"
+            fi
+        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}' 2>/dev/null)
+    fi
+
+    (
+        echo "APP|LOCATION|COMPOSE|STATUS"
+        for sdir in "${valid_search_dirs[@]}"; do
+            local LIST_PRUNE_ARGS=()
+            for excl in "${EXCLUDE_DIRS[@]}"; do
+                LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
+            done
+
+            while IFS= read -r -d '' d; do
+                local name
+                name="$(basename "$d")"
+                
+                local cfile
+                cfile="$(get_app_compose_file "$d")"
+
+                if [[ "$cfile" == "-" ]] && ! is_excluded "$name"; then
+                    continue
+                fi
+
+                local status="inactive"
+                if is_excluded "$name"; then
+                    status="excluded"
+                elif [[ -n "${app_status["$name"]:-}" ]]; then
+                    status="${app_status["$name"]}"
+                fi
+
+                local display_path="$d"
+                if [[ "$d" == "$HOME"* ]]; then
+                    display_path="~${d#"$HOME"}"
+                fi
+
+                echo "$name|$display_path|$cfile|$status"
+                
+            done < <(find "$sdir" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
+        done
+    ) | column -t -s '|' | awk 'NR==1{print; gsub(/./, "-"); print} NR>1'
+}
+
+print_app_level_details_table() {
+    local apps=("$@")
+    (
+        echo "APP|PATH|COMPOSE FILE|OVERALL STATE"
+        for app in "${apps[@]}"; do
+            dir="$(find_app_dir "$app")"
+            if [[ -z "$dir" || "$dir" == "DUPLICATE"* ]]; then
+                continue
+            fi
+            display_path="$dir"
+            if [[ "$dir" == "$HOME"* ]]; then
+                display_path="~${dir#"$HOME"}"
+            fi
+            cfile="$(get_app_compose_file "$dir")"
+            
+            state="inactive"
+            if docker ps -q --filter "label=com.docker.compose.project=$app" --filter "status=running" | grep -q .; then
+                state="running"
+            elif docker ps -q --filter "label=com.docker.compose.project=$app" | grep -q .; then
+                state="stopped"
+            fi
+            if is_excluded "$app"; then
+                state="excluded"
+            fi
+            echo "$app|$display_path|$cfile|$state"
+        done
+    ) | column -t -s '|' | awk 'NR==1{print; gsub(/./, "-"); print} NR>1'
 }
 
 get_all_apps() {
@@ -411,7 +519,7 @@ get_all_apps() {
         esac
 
         apps+=("$name")
-    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth 5 "${FIND_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
+    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
 
     echo "${apps[@]}"
 }
@@ -421,6 +529,8 @@ usage() {
     echo -e "  ${P_CMD}<action> all                             - All apps"
     echo -e "  ${P_CMD}<action> all except <name> [name ...]    - All apps except specified apps"
     echo -e "  ${P_CMD}<action> <name> [name ...]               - One or more specific apps"
+    echo -e "  ${P_CMD}list [all|name...]                       - Detailed list of apps"
+    echo -e "  ${P_CMD}get [app] [resource]                     - Get specific raw data (cid, iid, vol, mnt, net, port, state)"
     echo -e "  ${P_CMD}cleanup [net|buildx|vol|img|all] [-y]    - Clean dangling resources"
     echo
     echo -e "${BOLD}Examples:${NC}"
@@ -444,14 +554,17 @@ usage() {
     echo -e "  update             Pull latest images and recreate containers"
     echo -e "                     (or run your custom script, if it exists. Make sure to name it update*.sh)"
     echo -e "  status             View the current status of app containers"
+    echo -e "  list               View high-level inventory or detailed app info."
+    echo -e "  get                Get specific raw container data for scripting."
+    echo -e "                     resources: cid, iid, vol, mnt, net, port, state, health"
     echo -e "  logs               View app logs. Chain arguments like: last 100, live, since 30m, time, first 50"
     echo -e "  debug              [Coming Soon] Advanced app debugging."
     echo -e "  cleanup [net|buildx|vol|img|all] [-y]"
     echo -e "                     Clean dangling images (default)"
     echo -e "                     args: [net] includes unused networks, [buildx] includes cache, [vol] includes volumes, [all] includes everything"
-    echo -e "                     (Tip: You can append 'with vol', 'with net', etc. directly to 'delete' and 'update')"
+    echo -e "                     (Tip: You can append 'with vol', 'with img', etc. directly to 'delete')"
     echo -e "                     (Accepts -y/--yes to skip confirmations)"
-    echo -e "  Config options:    ALLOW_CUSTOM_UPDATE_SCRIPTS=true/false, UPDATE_SHA256=hash, UPDATE_URL=https://..."
+    echo -e "  Config options:    ALLOW_CUSTOM_UPDATE_SCRIPTS=true/false, UPDATE_SHA256=hash"
     echo -e "  -y, --yes          Skip confirmations for 'all' on destructive actions (delete)"
     echo
     if [[ -n "$CMD_PREFIX" ]]; then
@@ -464,7 +577,7 @@ usage() {
         echo -e "  sudo docker-app-manager uninstall  Uninstalls the script and removes all traces from your system"
     fi
     echo -e "  sudo ./dam.sh install           Installs the script universally to your system"
-    echo -e "  sudo ./dam.sh install --refresh Refreshes the command symlinks non-interactively"
+    echo -e "  sudo ./dam.sh install refresh   Refreshes the command symlinks non-interactively"
     echo -e "                                     (NOTE: Use this command only if you manually downloaded this script. Make sure to make it executable first!)"
     echo
     echo -e "${BOLD}Available apps (compose-based):${NC}"
@@ -615,19 +728,19 @@ cleanup_dangling_resources() {
         local cache
         cache="$(docker buildx du --verbose 2>/dev/null | awk '/^Total/ {print $2; exit}' || true)"
         if [[ -n "$cache" && "$cache" != "0B" ]]; then
-            echo -e "${YELLOW}  [build cache]${NC} Removing dangling build cache (${cache})..."
+            echo -e "${YELLOW}  [build cache]${NC} Removing build cache (${cache})..."
             local out
-            if out="$(docker buildx prune -f 2>&1)"; then
+            if out="$(docker buildx prune -a -f 2>&1)"; then
                 # shellcheck disable=SC2001
                 sed 's/^/                 /' <<< "$out"
-            elif out="$(docker builder prune -f 2>&1)"; then
+            elif out="$(docker builder prune -a -f 2>&1)"; then
                 # shellcheck disable=SC2001
                 sed 's/^/                 /' <<< "$out"
             else
                 echo -e "${RED}  [ERROR]${NC}       Build cache prune failed:\n$out" | sed 's/^/                 /'
             fi
         else
-            echo -e "${CYAN}  [build cache]${NC} No dangling build cache."
+            echo -e "${CYAN}  [build cache]${NC} No build cache to remove."
         fi
     else
         echo -e "${CYAN}  [build cache]${NC} Skipped (use 'cleanup buildx' or 'cleanup all' to force prune)."
@@ -1059,6 +1172,8 @@ parse_target_apps() {
     local parsing_with=false
     CLEANUP_MODES=()
     LOG_ARGS_RAW=()
+    GET_RESOURCE_RAW=""
+    GET_FULL_SHA=false
     ASSUME_YES=false
 
     for arg in "$@"; do
@@ -1066,6 +1181,10 @@ parse_target_apps() {
             skip_prompt=true
             ASSUME_YES=true
         elif [[ "$arg" == "with" ]]; then
+            if [[ "$action" != "delete" ]]; then
+                echo -e "${RED}[ERROR]${NC} The 'with' modifier is only supported for the 'delete' command."
+                return 1
+            fi
             parsing_with=true
         elif $parsing_with; then
             if [[ "$arg" == "vol" || "$arg" == "net" || "$arg" == "buildx" || "$arg" == "img" || "$arg" == "all" ]]; then
@@ -1078,6 +1197,19 @@ parse_target_apps() {
             if [[ "$action" == "logs" || "$action" == "debug" ]]; then
                 if [[ "$arg" =~ ^(last|first|since|until|live|follow|time|timestamps)$ || "$arg" =~ ^[0-9]+[smhd]?$ ]]; then
                     LOG_ARGS_RAW+=("$arg")
+                    continue
+                fi
+            elif [[ "$action" == "get" ]]; then
+                if [[ "$arg" == "full" ]]; then
+                    GET_FULL_SHA=true
+                    continue
+                fi
+                if [[ "$arg" =~ ^(cid|container-id|iid|image-id|vol|volume|volumes|mnt|mount|mountpoint|mountpoints|net|network|networks|port|ports|state|status|health|info)$ ]]; then
+                    if [[ -n "$GET_RESOURCE_RAW" ]]; then
+                        echo -e "${RED}[ERROR]${NC} You can only specify one resource type at a time. (Found: '$GET_RESOURCE_RAW' and '$arg')"
+                        return 1
+                    fi
+                    GET_RESOURCE_RAW="$arg"
                     continue
                 fi
             fi
@@ -1106,8 +1238,8 @@ parse_target_apps() {
         fi
 
         for excl in "${user_excludes[@]}"; do
-            if [[ -z "$(find_app_dir "$excl")" ]]; then
-                echo -e "${RED}[ERROR]${NC} except: app '${excl}' could not be found."
+            if [[ -z "$(find_app_dir "${excl%%:*}")" ]]; then
+                echo -e "${RED}[ERROR]${NC} except: app '${excl%%:*}' could not be found."
                 return 1
             fi
         done
@@ -1131,16 +1263,20 @@ parse_target_apps() {
             return 1
         fi
 
-        if [[ ${#user_excludes[@]} -gt 0 ]]; then
-            echo -e "${BOLD}Mode:${NC} ${action} ALL apps ${YELLOW}except${NC}: ${user_excludes[*]}"
-        else
-            echo -e "${BOLD}Mode:${NC} ${action} ALL apps"
+        if [[ "$action" != "get" ]]; then
+            if [[ ${#user_excludes[@]} -gt 0 ]]; then
+                echo -e "${BOLD}Mode:${NC} ${action} ALL apps ${YELLOW}except${NC}: ${user_excludes[*]}"
+            else
+                echo -e "${BOLD}Mode:${NC} ${action} ALL apps"
+            fi
+            echo
+            echo -e "${CYAN}Apps to process (${#APPS_TO_PROCESS[@]}):${NC}"
+            list_available_apps "compose" "  " "${APPS_TO_PROCESS[@]}"
         fi
-        echo
-        echo -e "${CYAN}Apps to process (${#APPS_TO_PROCESS[@]}):${NC}"
-        list_available_apps "compose" "  " "${APPS_TO_PROCESS[@]}"
     else
-        echo -e "${BOLD}Mode:${NC} ${action} specific app(s): ${CYAN}${requested[*]}${NC}"
+        if [[ "$action" != "get" ]]; then
+            echo -e "${BOLD}Mode:${NC} ${action} specific app(s): ${CYAN}${requested[*]}${NC}"
+        fi
         APPS_TO_PROCESS=(${requested[@]+"${requested[@]}"})
     fi
 
@@ -1177,7 +1313,7 @@ parse_target_apps() {
 # ── Entry point ───────────────────────────────────────────────────────────────
 # 1. Multicall logic (detect if called as start, stop, etc.)
 COMMAND_NAME="$(basename "$0")"
-SUPPORTED_ACTIONS=("start" "stop" "restart" "recreate" "force-recreate" "frec" "delete" "cleanup" "pause" "unpause" "update" "status")
+SUPPORTED_ACTIONS=("start" "stop" "restart" "recreate" "force-recreate" "frec" "delete" "cleanup" "pause" "unpause" "update" "status" "logs" "debug" "list" "get")
 
 if [[ " ${SUPPORTED_ACTIONS[*]} " =~ \ ${COMMAND_NAME}\  ]]; then
     set -- "$COMMAND_NAME" "$@"
@@ -1190,7 +1326,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         exit 1
     fi
     
-    if [[ "${1:-}" == "install" && "${2:-}" == "--refresh" ]]; then
+    if [[ "${1:-}" == "install" && ( "${2:-}" == "--refresh" || "${2:-}" == "refresh" ) ]]; then
         # Symlink the script instead of copying to ensure edits are globally reflected immediately
         if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
             ln -sf "$(realpath "$0")" "/usr/local/bin/docker-app-manager"
@@ -1262,7 +1398,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             
             if [[ -f "$CONFIG_FILE" ]]; then
                 echo -e "${YELLOW}Refreshing configuration...${NC}"
-                if ! bash "/usr/local/bin/docker-app-manager" install --refresh; then
+                if ! bash "/usr/local/bin/docker-app-manager" install refresh; then
                     echo -e "${RED}[ERROR]${NC} Failed to refresh configuration."
                 fi
             fi
@@ -1464,7 +1600,9 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
 
         existing_allow_custom="${ALLOW_CUSTOM_UPDATE_SCRIPTS:-false}"
         echo -e "\n${BOLD}Step 3: Update Settings${NC}"
-        echo -e "Allow custom update*.sh scripts to run automatically during updates? [y/N/true/false]"
+        echo -e "Allow custom update*.sh scripts to run automatically without prompting during updates?"
+        echo -e "${CYAN}Note: If 'No', DAM will interactively ask you for permission each time it finds a script.${NC}"
+        echo -e "Choice: [y/N/true/false]"
         echo -e "(Default: ${existing_allow_custom})"
         read -r -p "> " input_allow_custom
         if [[ -z "$input_allow_custom" ]]; then
@@ -1477,6 +1615,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
 
         existing_sha="${UPDATE_SHA256:-}"
         echo -e "\nSelf-Update SHA-256 (optional, for verification):"
+        echo -e "${YELLOW}Note: It is only there for highly strict security environments where administrators want to manually approve and verify every single update before allowing the script to pull it. For normal use, leaving it blank is the best approach.${NC}"
         if [[ -n "$existing_sha" ]]; then
             echo -e "(Default: ${existing_sha})"
         fi
@@ -1486,14 +1625,6 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         fi
 
         existing_url="${UPDATE_URL:-}"
-        echo -e "\nSelf-Update URL (optional, e.g. https://...):"
-        if [[ -n "$existing_url" ]]; then
-            echo -e "(Default: ${existing_url})"
-        fi
-        read -r -p "> " input_url
-        if [[ -z "$input_url" && -n "$existing_url" ]]; then
-            input_url="$existing_url"
-        fi
 
         CONF_PATH="/etc/docker-app-manager.conf"
         echo -e "\n${YELLOW}Saving configuration to $CONF_PATH...${NC}"
@@ -1516,8 +1647,8 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             if [[ -n "$input_sha" ]]; then
                 echo "UPDATE_SHA256=\"$input_sha\""
             fi
-            if [[ -n "$input_url" ]]; then
-                echo "UPDATE_URL=\"$input_url\""
+            if [[ -n "$existing_url" ]]; then
+                echo "UPDATE_URL=\"$existing_url\""
             fi
         } >> "${CONF_PATH}.tmp"
         mv "${CONF_PATH}.tmp" "$CONF_PATH"
@@ -1582,7 +1713,9 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
     exit 0
 fi
 
-print_header
+if [[ "$1" != "get" ]]; then
+    print_header
+fi
 
 if [[ $# -eq 0 ]]; then
     usage
@@ -1605,9 +1738,15 @@ if [[ "$ACTION" == "frec" ]]; then
 fi
 
 case "$ACTION" in
-    (start|stop|restart|recreate|force-recreate|delete|pause|unpause|update|status|logs|debug)
+    (start|stop|restart|recreate|force-recreate|delete|pause|unpause|update|status|logs|debug|list|get)
         if ! docker_ready; then
             exit 1
+        fi
+
+        if [[ "$ACTION" == "list" && $# -eq 0 ]]; then
+            echo -e "${BOLD}Application Inventory:${NC}"
+            inventory_apps_table
+            exit 0
         fi
 
         if ! parse_target_apps "$ACTION" "$@"; then
@@ -1620,7 +1759,166 @@ case "$ACTION" in
             exit 1
         fi
 
-        if [[ "$ACTION" == "status" ]]; then
+        if [[ "$ACTION" == "list" ]]; then
+            echo -e "${CYAN}Gathering details for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
+            echo
+            echo -e "${BOLD}Application Level Details:${NC}"
+            print_app_level_details_table "${APPS_TO_PROCESS[@]}"
+            echo
+            exit 0
+        elif [[ "$ACTION" == "get" ]]; then
+            if [[ -z "$GET_RESOURCE_RAW" ]]; then
+                echo -e "${RED}[ERROR]${NC} You must specify a resource to get. (e.g. cid, iid, vol, mnt, net, port, state, info)"
+                exit 1
+            fi
+            
+            if [[ "$GET_RESOURCE_RAW" == "info" ]]; then
+                echo -e "${CYAN}Gathering details for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
+                all_containers=()
+                
+                declare -A target_apps
+                for app in "${APPS_TO_PROCESS[@]}"; do
+                    target_apps["$app"]=1
+                    (( TOTAL++ )) || true
+                done
+                
+                while IFS='|' read -r cid project wdir; do
+                    [[ -z "$cid" ]] && continue
+                    app_name=""
+                    if [[ -n "$project" ]] && [[ -n "${target_apps["$project"]:-}" ]]; then
+                        app_name="$project"
+                    elif [[ -n "$wdir" ]]; then
+                        bname=$(basename "$wdir")
+                        if [[ -n "${target_apps["$bname"]:-}" ]]; then
+                            app_name="$bname"
+                        fi
+                    fi
+                    if [[ -n "$app_name" ]]; then
+                        all_containers+=("$cid")
+                    fi
+                done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.ID}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
+                
+                echo
+                if [[ ${#all_containers[@]} -eq 0 ]]; then
+                    echo -e "${YELLOW}No containers found for the requested apps.${NC}"
+                else
+                    echo -e "${BOLD}1. Application Level Details:${NC}"
+                    print_app_level_details_table "${APPS_TO_PROCESS[@]}"
+                    echo
+
+                    echo -e "${BOLD}2. Container Level Details:${NC}"
+                    (
+                            echo "APP|SERVICE|CONTAINER|IMAGE|STATE|HEALTH|PORTS"
+                        docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Ports}}' | \
+                        while IFS='|' read -r project svc name image state status ports; do
+                            if [[ -z "${target_apps["$project"]:-}" ]]; then continue; fi
+                            
+                            health="-"
+                            if [[ "$status" == *"healthy"* ]]; then health="healthy"; fi
+                            if [[ "$status" == *"unhealthy"* ]]; then health="unhealthy"; fi
+                            
+                            ports="${ports:--}"
+                            echo "$project|$svc|$name|$image|$state|$health|$ports"
+                        done
+                    ) | column -t -s '|' | awk 'NR==1{print; gsub(/./, "-"); print} NR>1'
+                    echo
+
+                    echo -e "${BOLD}3. Docker Resources:${NC}"
+                    (
+                            echo "APP|CONTAINER ID|IMAGE ID|NETWORKS|VOLUMES|MOUNTPOINTS"
+                        docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{printf "%.12s" .Id}}|{{.Image}}|{{range $k, $v := .NetworkSettings.Networks}}{{$k}},{{end}}|{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}={{.Destination}},{{else if eq .Type "bind"}}{{.Source}}={{.Destination}},{{end}}{{end}}' "${all_containers[@]}" | \
+                        while IFS='|' read -r project cid image_id networks mounts; do
+                            image_id="${image_id#sha256:}"
+                            image_id="${image_id:0:12}"
+                            networks="${networks%,}"
+                            [[ -z "$networks" ]] && networks="-"
+                            
+                            mounts="${mounts%,}"
+                            volumes=""
+                            mountpoints=""
+                            if [[ -n "$mounts" ]]; then
+                                IFS=',' read -ra mnt_array <<< "$mounts"
+                                for m in "${mnt_array[@]}"; do
+                                    v="${m%%=*}"
+                                    p="${m#*=}"
+                                    volumes+="${v},"
+                                    mountpoints+="${p},"
+                                done
+                                volumes="${volumes%,}"
+                                mountpoints="${mountpoints%,}"
+                            fi
+                            [[ -z "$volumes" ]] && volumes="-"
+                            [[ -z "$mountpoints" ]] && mountpoints="-"
+                            
+                            echo "$project|$cid|$image_id|$networks|$volumes|$mountpoints"
+                        done
+                    ) | column -t -s '|' | awk 'NR==1{print; gsub(/./, "-"); print} NR>1'
+                fi
+                exit 0
+            fi
+            
+            for raw_app in "${APPS_TO_PROCESS[@]}"; do
+                app_name="${raw_app%%:*}"
+                target_service="${raw_app#*:}"
+                [[ "$target_service" == "$raw_app" ]] && target_service=""
+                
+                filter_args=("-f" "label=com.docker.compose.project=$app_name")
+                if [[ -n "$target_service" ]]; then
+                    filter_args+=("-f" "label=com.docker.compose.service=$target_service")
+                fi
+
+                docker ps -a "${filter_args[@]}" --format '{{.Label "com.docker.compose.service"}}|{{.ID}}' 2>/dev/null | while IFS='|' read -r svc cid; do
+                    [[ -z "$cid" ]] && continue
+                    
+                    val=""
+                    case "$GET_RESOURCE_RAW" in
+                        cid|container-id)
+                            if [[ "${GET_FULL_SHA:-false}" == "true" ]]; then
+                                val=$(docker inspect --format '{{.Id}}' "$cid" 2>/dev/null)
+                            else
+                                val="$cid"
+                            fi
+                            ;;
+                        iid|image-id)
+                            if [[ "${GET_FULL_SHA:-false}" == "true" ]]; then
+                                val=$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null | sed 's/sha256://')
+                            else
+                                val=$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null | sed 's/sha256://' | cut -c1-12)
+                            fi
+                            ;;
+                        vol|volume|volumes)
+                            val=$(docker inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{else if eq .Type "bind"}}{{.Source}}{{end}}{{println}}{{end}}' "$cid" 2>/dev/null | grep -v '^$' || true)
+                            ;;
+                        mnt|mount|mountpoint|mountpoints)
+                            val=$(docker inspect --format '{{range .Mounts}}{{.Destination}}{{println}}{{end}}' "$cid" 2>/dev/null | grep -v '^$' || true)
+                            ;;
+                        net|network|networks)
+                            val=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{println}}{{end}}' "$cid" 2>/dev/null | grep -v '^$' || true)
+                            ;;
+                        port|ports)
+                            val=$(docker ps -a -f "id=$cid" --format '{{.Ports}}' 2>/dev/null | grep -v '^$' || true)
+                            ;;
+                        state|status)
+                            val=$(docker ps -a -f "id=$cid" --format '{{.State}}' 2>/dev/null | grep -v '^$' || true)
+                            ;;
+                        health)
+                            val=$(docker ps -a -f "id=$cid" --format '{{.Status}}' 2>/dev/null | grep -o "(.*)" | tr -d '()' | grep -v '^$' || true)
+                            ;;
+                    esac
+                    
+                    if [[ -n "$val" ]]; then
+                        if [[ -n "$target_service" ]]; then
+                            echo "$val"
+                        else
+                            while IFS= read -r line; do
+                                [[ -n "$line" ]] && echo "${svc}: ${line}"
+                            done <<< "$val"
+                        fi
+                    fi
+                done
+            done
+            exit 0
+        elif [[ "$ACTION" == "status" ]]; then
             echo -e "${CYAN}Gathering status for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
             all_containers=()
             

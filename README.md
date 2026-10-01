@@ -1,13 +1,23 @@
 <p align="center">
-  <strong>DAM</strong> - Docker App Manager
+  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
+  <img src="https://img.shields.io/badge/bash-4.4%2B-orange?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash 4.4+">
+  <img src="https://img.shields.io/badge/docker-compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">
+  <img src="https://img.shields.io/badge/platform-linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
+</p>
+
+<h1 align="center">DAM - Docker App Manager</h1>
+
+<p align="center">
+  <strong>A powerful, centralized lifecycle manager for Docker Compose applications.</strong>
 </p>
 
 <p align="center">
-  <em>A robust CLI for bulk-managing, updating, and safely cleaning multiple Docker Compose applications from anywhere.</em>
+  <em>Start, stop, update, and clean multiple Docker Compose stacks safely, efficiently and intelligently from anywhere - by name, in bulk, with one command.</em>
 </p>
 
 <p align="center">
-  Built for hobbyists, self-hosters, and people who love CLI but hate <code>cd</code>-ing into every stack folder to manage docker apps.
+  Built for sysadmins, hobbyists, and self-hosters who love the CLI but hate <code>cd</code>-ing into every stack folder.
 </p>
 
 <p align="center">
@@ -16,8 +26,8 @@
   <a href="#commands-reference">Commands</a> ·
   <a href="#configuration">Configuration</a> ·
   <a href="#how-it-works">How It Works</a> ·
-  <a href="#advanced">Advanced</a> ·
-  <a href="#license">License</a>
+  <a href="#advanced-topics">Advanced</a> ·
+  <a href="docs/">Full Documentation</a>
 </p>
 
 ---
@@ -40,7 +50,8 @@
   - [Lifecycle Actions](#lifecycle-actions)
   - [Update](#update)
   - [Cleanup](#cleanup)
-  - [Status](#status)
+  - [Status, List & Get](#status-list--get)
+  - [Logs](#logs)
   - [System Commands](#system-commands)
 - [Configuration](#configuration)
   - [Search Directories](#search-directories)
@@ -93,9 +104,9 @@ cleanup vol
 
 from **any directory**.
 
-DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compose.yml`, runs the right `docker compose` (or `docker-compose`) commands, supports bulk operations with exclusions, optional extended cleanup, and a safe install that gives you short global commands.
+DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compose.yml`, runs the right `docker compose` (or `docker-compose`) commands, supports bulk operations with exclusions, includes limited cleanup conveniences, and offers a safe install with short global commands.
 
-**NOTE:** DAM is not a replacement for Docker CLI. It is a global CLI for managing Docker Compose applications by application/directory name instead of requiring the user to know the project directory, Compose file, service names, container names or IDs.
+> **NOTE:** DAM focuses on lifecycle management for Docker Compose application stacks; it is not a second Docker CLI or a replacement for Docker. It finds apps by directory name and runs common app-scoped operations without requiring you to navigate to each project directory. The existing `cleanup` command is a limited convenience for common host-wide prune operations, not a general Docker resource-management interface. Use Docker's native CLI for operations like `exec`, `inspect`, `cp`, or specialized maintenance.
 
 ---
 
@@ -103,9 +114,9 @@ DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compo
 
 | Problem | DAM solution |
 | :------ | :----------- |
-| Constantly `cd` into stack directories | Run commands from anywhere |
+| Constantly `cd` into stack directories | Run commands from anywhere by app name |
 | Updating 10+ apps one by one | `update all` or `update all except traefik` |
-| Forgetting which apps exist | Built-in listing + status |
+| Forgetting which apps exist | Built-in listing + real-time status |
 | Accidental volume/network deletes | Explicit confirmations + opt-in cleanup modes |
 | Different compose file names | Auto-detects `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` |
 | Custom update logic per app | Supports `update*.sh` scripts in the app folder |
@@ -122,15 +133,16 @@ It is intentionally focused on **one compose project per folder** which is the p
   - `all`
   - `all except app1 app2`
   - one or more specific apps
-- **Update flow** - pull images + recreate, or run a custom `update*.sh` if present
-- **Safe cleanup** - dangling images by default; opt-in for networks, volumes, build cache, or everything
+- **Smart updates** - pull images, build with fresh base images, recreate - or run a custom `update*.sh` if present. Stopped apps are left stopped.
+- **Basic optional cleanup** - an existing convenience for common host-wide prune operations, with confirmations for destructive modes
 - **Global install** - system-wide commands + config under `/etc`
 - **Configurable search paths** - default locations or your own directories
 - **Exclude folders** - ignore directories named e.g. `recovered`, `unused`
 - **Colored, structured output** - clear per-app sections and a final summary
 - **Confirmation prompts** on destructive bulk actions (bypass with `-y` / `--yes`)
-- **Self-update** - pull the latest script from the repository
+- **Self-update** - pull the latest script from the repository with optional SHA-256 verification
 - **Works with both** `docker compose` (v2 plugin) and legacy `docker-compose`
+- **Scriptable** - `get` command for extracting raw container data for automation
 
 ---
 
@@ -155,9 +167,10 @@ docker compose version   # or: docker-compose --version
 
 ### Quick Install
 
-1. Run the one-line installation script. This will automatically download the latest version, make it executable, and trigger the interactive setup:
+Run the one-line installation script. This will automatically download the latest version, make it executable, and trigger the interactive setup:
+
 ```bash
-sudo curl -fsSL https://raw.githubusercontent.com/RuthvikUpputuri/dam/main/dam.sh -o /tmp/dam.sh && sudo chmod +x /tmp/dam.sh && sudo /tmp/dam.sh install && rm /tmp/dam.sh
+sudo curl -fsSL https://gh.upputuri.in/dam.sh -o /tmp/dam.sh && sudo chmod +x /tmp/dam.sh && sudo /tmp/dam.sh install && rm /tmp/dam.sh
 ```
 
 The installer will:
@@ -165,7 +178,8 @@ The installer will:
 - Ask which directories contain your Docker Compose apps (defaults suggested)
 - Let you set folder names to always exclude
 - Let you choose a global command name (default: `dkr`, or `none` for raw commands like `start` / `stop`)
-- Install the script and create the necessary command links
+- Configure whether custom `update*.sh` scripts run automatically or require confirmation
+- Symlink the script to `/usr/local/bin/docker-app-manager` and create command symlinks
 - Write configuration to `/etc/docker-app-manager.conf`
 
 After installation you can use the commands from anywhere.
@@ -191,14 +205,15 @@ When not installed, DAM looks for apps in these default locations (if they exist
 
 ```bash
 # If you chose a custom name (e.g. dkr):
+dkr list
 dkr status all
 
 # If you chose "none" (raw commands):
-start --help          # or just: start
+list
 status all
 ```
 
-You should see a usage summary and a list of discovered apps.
+You should see an inventory of discovered apps and their running state.
 
 ---
 
@@ -220,7 +235,7 @@ Optional modifiers:
 - Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** / **update** to trigger extended cleanup.
 - Use `-y` or `--yes` to skip confirmation prompts (especially important for `delete all` and volume/image prunes).
 
-**Note:** App names and paths must **not** contain spaces.
+**Note:** App names and paths must **not** contain spaces. App names are derived from the directory name. So if you have a folder named `n8n`, the app name will be `n8n`. If you have a folder named `n8n-old`, the app name will be `n8n-old`.
 
 ### Everyday Examples
 
@@ -257,6 +272,12 @@ dkr logs n8n live time
 # View the first 50 lines of logs
 dkr logs n8n first 50
 
+# Get raw container IDs for scripting
+dkr get n8n cid
+
+# Get container info for a specific service
+dkr get n8n:postgres vol
+
 # Clean only dangling images
 cleanup
 
@@ -275,34 +296,39 @@ status n8n traefik
 
 ## Commands Reference
 
+> 📖 **Full reference:** [docs/commands.md](docs/commands.md) - includes exact underlying Docker commands for every DAM action.
+
 ### Lifecycle Actions
 
-| Command | Description |
-| :------ | :---------- |
-| `start` | `docker compose up -d` (create if needed) |
+| Command | What It Actually Runs |
+| :------ | :-------------------- |
+| `start` | `docker compose up -d` (creates + starts containers) |
 | `stop` | `docker compose stop` |
 | `restart` | `docker compose restart` |
-| `recreate` | `down --remove-orphans` then `up -d` |
-| `force-recreate` / `frec` | `down -t 0 --remove-orphans` then `up -d --force-recreate` |
+| `recreate` | `docker compose down --remove-orphans` → `docker compose up -d` |
+| `force-recreate` / `frec` | `docker compose down --remove-orphans -t 0` → `docker compose up -d --force-recreate` |
 | `pause` | `docker compose pause` |
 | `unpause` | `docker compose unpause` |
-| `delete` | Remove the stack (`down --remove-orphans`). Optionally remove volumes/images with `with [vol \| img \| all]`. Then runs dangling cleanup. |
+| `delete` | `docker compose down --remove-orphans` (optionally with `-v` / `--rmi all`) → dangling cleanup |
+
+> ⚠️ **Important:** DAM's `start` uses `docker compose up -d`, **not** `docker compose start`. This means it will create containers if they don't exist and apply configuration changes. See [DAM vs Docker](docs/docker-vs-dam.md) for details.
 
 ### Update
 
 ```bash
-update <selection> [with vol|net|buildx|img|all] [-y]
+update <selection>
 ```
 
 Behavior per app:
 
-1. If an `update*.sh` script exists in the app directory **and** custom update scripts are allowed → run that script. If more than one update script exists, DAM will run those update scripts in alphabetical order.
+1. If an `update*.sh` script exists in the app directory **and** custom update scripts are allowed → run that script.
 2. Otherwise:
-   - `docker compose pull`
-   - rebuild if needed
-   - recreate containers (`up -d`)
+   - `docker compose pull --ignore-buildable` (pulls remote images, skips buildable services)
+   - `docker compose build --pull` (rebuilds with fresh base images)
+   - `docker compose up -d` (recreates containers - **only if app was running**; stopped apps stay stopped)
+3. After all apps: dangling image cleanup.
 
-You can append cleanup modifiers the same way as with `delete`.
+> 📖 **Full details:** [docs/updates.md](docs/updates.md)
 
 ### Cleanup
 
@@ -313,63 +339,56 @@ cleanup [net|buildx|vol|img|all] [-y]
 | Argument | What it does |
 | :------- | :----------- |
 | *(none)* | Prune **dangling** (untagged) images only |
-| `img` | Prune **all unused** images (more aggressive) |
-| `net` | Prune dangling/unused networks |
+| `img` | Prune **all unused** images (more aggressive, confirmation required) |
+| `net` | Prune dangling/unused networks (confirmation required) |
 | `vol` | Prune unused volumes (**data loss risk** - confirmation required) |
 | `buildx` | Prune build cache |
 | `all` | Everything above |
 
-**Combining Arguments:**
-You can pass multiple cleanup arguments at once! For example:
-- `dkr cleanup vol net`
-- `dkr cleanup img vol buildx`
-*(Note: If you use `all`, you only need that 1 argument, there is no need to type the rest).*
+Multiple arguments can be combined: `cleanup vol net`, `cleanup img vol buildx`.
 
-> **IMPORTANT:** The standalone `cleanup` command is always **Global**. It scans your entire server and blindly deletes unused resources. This is entirely different from chaining cleanups (like `dkr delete myapp with vol net`), which are strictly **App-Specific** and only safely delete resources tied to that specific app.
+> ⚠️ **Important:** The standalone `cleanup` command is always **global** - it operates on your entire Docker host. This is entirely different from `delete <app> with vol`, which only removes volumes for that specific app's Compose project. See [docs/safety.md](docs/safety.md) for details.
 
-Confirmations are required for volume and full-image prunes unless you pass `-y` / `--yes`.
+### Status, List & Get
 
-### Status
+| Command | Description |
+| :------ | :---------- |
+| `status <selection>` | Container table + real-time resource usage (`docker ps` + `docker stats`) |
+| `list` | Inventory of all discovered apps with status |
+| `list <selection>` | Detailed info for specific apps |
+| `get <app> <resource>` | Raw container data for scripting (`cid`, `iid`, `vol`, `mnt`, `net`, `port`, `state`, `health`, `info`) |
 
-```bash
-status <selection>
-```
-
-Shows `docker compose ps` for the selected apps.
+The `get` command supports service targeting: `get <app>:<service> <resource>`.
 
 ### Logs
 
 ```bash
-logs <selection> [args...]
+logs <selection> [keywords...]
 ```
 
-View the logs for your apps. You can use native "spoken English" keywords to format the log output!
+Human-friendly keyword syntax:
 
-**Supported Keywords (can be chained in any order):**
-- `last <N>`: Show the last N lines (e.g. `last 100`)
-- `first <N>`: Show the first N lines (e.g. `first 50`)
-- `since <time>`: Show logs since a timestamp or relative time (e.g. `since 30m`)
-- `until <time>`: Show logs until a timestamp (e.g. `until 1h`)
-- `live` (or `follow`): Stream the logs live (scrolls down)
-- `time` (or `timestamps`): Prefix every log line with a timestamp
+| Keyword | Effect |
+| :------ | :----- |
+| `last <N>` | Show the last N lines |
+| `first <N>` | Show the first N lines |
+| `since <time>` | Show logs since a timestamp/duration (e.g. `since 30m`) |
+| `until <time>` | Show logs until a timestamp |
+| `live` / `follow` | Stream logs in real-time |
+| `time` / `timestamps` | Prefix every line with a timestamp |
 
-**Examples:**
-```bash
-dkr logs n8n last 50
-dkr logs traefik live time
-dkr logs all last 20
-dkr logs n8n live last 10
-```
-*(Note: As a safety feature, you cannot use the `live` argument if your app selection is `all`)*
+Keywords can be chained: `logs n8n live last 10 time`
+
+> **Note:** `live` cannot be used with `all` apps (safety restriction).
 
 ### System Commands
 
-These require root (or the way you installed):
+These require root (`sudo`):
 
 | Command | Description |
 | :------ | :---------- |
 | `sudo ./dam.sh install` | Interactive system-wide install |
-| `sudo ./dam.sh install --refresh` | Refresh command symlinks non-interactively |
+| `sudo ./dam.sh install refresh` | Refresh command symlinks non-interactively |
 | `sudo <cmd> config` | Re-run the setup wizard (change search dirs / command name) |
 | `sudo <cmd> self-update` | Download the latest `dam.sh` from the configured `UPDATE_URL` and reinstall |
 | `sudo <cmd> uninstall` | Remove the script, symlinks, and config |
@@ -382,64 +401,36 @@ These require root (or the way you installed):
 
 ### Search Directories
 
-DAM looks for app folders under the directories listed in `SEARCH_DIRS`.
-
-**Defaults** (used when no config file exists and the directories are present):
-
-- `/opt/stacks`
-- `/opt/projects`
-- `$HOME/apps` (or the real home of the user who ran `sudo`)
-- `$HOME/stacks`
-
-You can change these during `install` or later with `config`.
+DAM looks for app folders under the directories listed in `SEARCH_DIRS`. **Defaults** (used when no config file exists and the directories are present): `/opt/stacks`, `/opt/projects`, `$HOME/apps`, `$HOME/stacks`. Change these during `install` or later with `config`.
 
 ### Exclude Folders
 
-Folder **names** (not full paths) listed in `EXCLUDE_DIRS` are ignored during discovery.
-
-Default excludes often include names such as:
-
-- `recovered`
-- `recovered-configs`
-- `unused`
+Folder **names** (not full paths) listed in `EXCLUDE_DIRS` are pruned during discovery. Default excludes: `recovered`, `recovered-configs`, `unused`.
 
 ### Custom Command Name
-
-During install you choose how you want to invoke DAM:
 
 | Choice | Result |
 | :----- | :----- |
 | `dkr` (default) | Commands become `dkr start …`, `dkr update …`, etc. |
 | Any other name | e.g. `dam start …` |
-| `none` | Raw multicall commands: `start`, `stop`, `update`, … are installed directly |
+| `none` (Raw mode) | Raw multicall commands: `start`, `stop`, `update`, … are installed directly |
 
-Raw mode is convenient but can conflict with other tools that use the same names. The installer checks for conflicts.
+Raw mode is convenient but can conflict with other tools. The installer checks for conflicts.
 
 ### Config File
 
-Installed configuration lives at:
-
-```text
-/etc/docker-app-manager.conf
-```
-
-It is a simple Bash-sourceable file that can set:
-
-- `SEARCH_DIRS=(...)`
-- `EXCLUDE_DIRS=(...)`
-- `CUSTOM_CMD_NAME=...`
-- and other options the script understands
+Installed configuration lives at `/etc/docker-app-manager.conf` - a Bash-sourceable file that sets `SEARCH_DIRS`, `EXCLUDE_DIRS`, `CUSTOM_CMD_NAME`, and other options.
 
 ### Environment / Script Options
 
-Relevant variables (also documentable in the config file):
+| Variable | Type | Purpose | Default |
+| :------- | :--- | :------ | :------ |
+| `UPDATE_URL` | String (URL) | Raw URL used by `self-update`. **Do not change** unless using a custom mirror. | Hard-coded in script |
+| `UPDATE_SHA256` | String (Hash) | Optional 64-character SHA-256 integrity check. *Only for strict security environments where every update is manually approved.* | *(empty)* |
+| `ALLOW_CUSTOM_UPDATE_SCRIPTS` | Boolean | Whether `update*.sh` scripts are permitted (`true` or `false`) | `false` |
+| `CUSTOM_CMD_NAME` | String | Prefix / multicall name | `"dkr"` |
 
-| Variable | Purpose |
-| :------- | :------ |
-| `UPDATE_URL` | Raw URL used by `self-update` (default points at this repository) |
-| `UPDATE_SHA256` | Optional integrity check for self-update |
-| `ALLOW_CUSTOM_UPDATE_SCRIPTS` | Whether `update*.sh` scripts are permitted |
-| `CUSTOM_CMD_NAME` | Prefix / multicall name |
+> 📖 **Full reference:** [docs/configuration.md](docs/configuration.md)
 
 ---
 
@@ -447,16 +438,15 @@ Relevant variables (also documentable in the config file):
 
 ### App Discovery
 
-1. Walk each directory in `SEARCH_DIRS` (depth limited, typically up to 5 levels).
+1. Walk each directory in `SEARCH_DIRS` (depth 1–5 levels).
 2. Prune any directory whose basename is in `EXCLUDE_DIRS`.
-3. Treat a directory as an “app” if it contains at least one of:
-   - `compose.yaml` / `compose.yml`
-   - `docker-compose.yaml` / `docker-compose.yml`
+3. Treat a directory as an "app" if it contains at least one of:
+   - `compose.yaml` / `compose.yml` / `docker-compose.yaml` / `docker-compose.yml`
    - or (for update mode) an `update*.sh` script
 
-App **name** = basename of the directory.
+🚨 **App name** = basename of the directory. If multiple directories share the same name, DAM reports an error and refuses to guess.
 
-If multiple directories share the same name, DAM reports an error and refuses to guess.
+> 📖 **Full details:** [docs/application-discovery.md](docs/application-discovery.md)
 
 ### Compose Detection
 
@@ -471,14 +461,19 @@ It then runs `docker compose` or falls back to `docker-compose`.
 
 ### Custom Update Scripts
 
-If an app directory contains a file matching `update*.sh` and custom scripts are allowed, `update` will execute that script instead of the default pull + recreate flow. This lets you keep complex migration or multi-step update logic next to the compose file.
+If an app directory contains a file matching `update*.sh` and custom scripts are allowed, `update` will execute the first script alphabetically instead of the default pull + build + recreate flow. This lets you keep complex migration or multi-step update logic next to the compose file.
+
+> 📖 **Full details:** [docs/updates.md](docs/updates.md)
 
 ### Safety Guards
 
 - Destructive bulk actions (`delete all`, volume prune, aggressive image prune) require explicit confirmation unless `-y` / `--yes` is passed.
 - Non-interactive terminals (no TTY) refuse destructive prompts and ask you to use `-y`.
-- Volumes are **preserved by default** on `delete`. You must explicitly request `with vol` (or `cleanup vol` / `cleanup all`).
+- Volumes are **preserved by default** on `delete`. You must explicitly request `with vol`.
+- `cleanup vol`/`cleanup all` operates **globally** on the Docker host - separate from app-level cleanup.
 - App names containing spaces are rejected.
+
+> 📖 **Full details:** [docs/safety.md](docs/safety.md)
 
 ---
 
@@ -487,17 +482,15 @@ If an app directory contains a file matching `update*.sh` and custom scripts are
 ### Self-Update
 
 ```bash
-sudo dkr self-update          # or whatever your command name is
-# or, if using the script directly:
-sudo ./dam.sh self-update
+sudo <cmd> self-update  # e.g., 'sudo dkr self-update'. If using raw mode, use 'docker-app-manager self-update'
 ```
 
-Fetches the script from `UPDATE_URL` (default: the raw GitHub URL of this repository) and reinstalls it.
+Fetches the script from `UPDATE_URL`, validates it (shebang check, syntax check, optional SHA-256 verification), and reinstalls it.
 
 ### Reconfigure
 
 ```bash
-sudo dkr config
+sudo <cmd> config  # e.g., 'sudo dkr config'. If using raw mode, use 'docker-app-manager config'
 ```
 
 Re-runs the interactive wizard so you can change search directories, excludes, or the command name without a full reinstall.
@@ -505,40 +498,44 @@ Re-runs the interactive wizard so you can change search directories, excludes, o
 ### Uninstall
 
 ```bash
-sudo dkr uninstall
+sudo <cmd> uninstall  # e.g., 'sudo dkr uninstall'. If using raw mode, use 'docker-app-manager uninstall'
 ```
 
-Removes the installed script, command links, and the config file under `/etc`.
+Removes the installed script (`/usr/local/bin/docker-app-manager`), all command symlinks, and the config file (`/etc/docker-app-manager.conf`).
 
 ### Running Without Installation
 
 ```bash
 ./dam.sh <action> <selection>
 ```
+Not recommended for production or daily use. It's more useful for testing or portable usage. You must be in the same directory as the `dam.sh` script to run the commands.
 
-Uses the built-in default search paths. Useful for testing or portable USB/toolbag usage.
+Uses the built-in default search paths, so you must specify your stacks path directly in the `dam.sh` file.
 
 ### Non-Interactive / Automation
 
 - Always pass `-y` / `--yes` for any command that might prompt.
 - Prefer explicit app lists over `all` when scripting.
 - Ensure the user that runs the script can talk to the Docker daemon (group `docker` or root).
-
-Example:
+- Use `get` for extracting raw data for pipelines.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-update all except traefik -y
-cleanup -y
+dkr update all except traefik
+dkr cleanup -y
 ```
 
 ### Limitations
 
-- **One compose project per folder.** Does not manage multi-file compose selections or Swarm/Kubernetes.
+- **One compose project per folder.** Does not manage multi-file compose selections, profiles, or Swarm/Kubernetes.
 - **No spaces** in app names or paths.
-- Discovery depth is capped (currently looking up to depth 5 under each search root).
+- Discovery depth is capped at 5 levels under each search root.
 - Designed primarily for Linux self-hosted environments.
+- Custom update scripts: only the first alphabetically is executed.
+- `debug` command is a placeholder (not yet implemented).
+
+> 📖 **Full details:** [docs/limitations.md](docs/limitations.md)
 
 ---
 
@@ -549,10 +546,13 @@ cleanup -y
 | `bash 4.4+ required` | Upgrade Bash or run under a newer shell |
 | `docker` command not found / daemon not running | Install Docker, start the service, check permissions (`docker` group) |
 | Neither `docker compose` nor `docker-compose` available | Install the Compose plugin or the standalone binary |
-| App not found | Confirm the folder name, that a compose file exists, and that the parent is in `SEARCH_DIRS`. Run `status` / usage to list discovered apps. |
+| App not found | Confirm the folder name, that a compose file exists, and that the parent is in `SEARCH_DIRS`. Run `list` to see discovered apps. |
 | Multiple matches for the same name | Rename one of the folders or narrow `SEARCH_DIRS` |
 | Permission denied on install/config | Use `sudo` |
 | Volume/network prune refused in scripts | Pass `-y` and ensure you really want the data removed |
+| `start` recreated my containers | DAM uses `docker compose up -d`, which applies config changes. See [DAM vs Docker](docs/docker-vs-dam.md). |
+
+> 📖 **Full troubleshooting guide:** [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ---
 
@@ -563,10 +563,13 @@ Contributions, bug reports, and ideas are welcome.
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes (keep the script self-contained and well-commented)
-4. Test against real compose stacks if possible
-5. Open a pull request with a clear description
+4. Run `bash -n dam.sh` and `shellcheck dam.sh` before submitting
+5. Test against real compose stacks if possible
+6. Open a pull request with a clear description
 
 Please keep the spirit of the tool: simple, safe defaults, and friendly to people who live in the terminal.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ---
 
@@ -582,11 +585,10 @@ See the [LICENSE](LICENSE) file in the repository for the full text.
 - Author: [Ruthvik Upputuri](https://github.com/RuthvikUpputuri)
 - Repository: [https://gh.upputuri.in/dam](https://gh.upputuri.in/dam)
 
-Inspired by the daily friction of managing 100's of Docker Compose stacks.
+Inspired by the daily friction of managing 100's of my Docker Compose stacks.
 
 ---
 
 <p align="center">
   <sub>Happy stacking.</sub>
 </p>
-
