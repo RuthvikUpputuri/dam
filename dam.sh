@@ -67,6 +67,8 @@ set -uo pipefail
 UPDATE_URL="https://gh.upputuri.in/dam.sh"
 CONFIG_FILE="/etc/docker-app-manager.conf"
 
+COMPOSE_FILENAMES=("compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml")
+
 if [[ -f "$CONFIG_FILE" ]]; then
     # Load user settings if they exist
     # shellcheck source=/dev/null
@@ -138,7 +140,7 @@ find_app_dir() {
         local found=()
         while IFS= read -r -d '' match; do
             local has_compose=false
-            for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+            for cf in "${COMPOSE_FILENAMES[@]}"; do
                 if [[ -f "$match/$cf" ]]; then
                     has_compose=true
                     break
@@ -280,7 +282,7 @@ docker_ready() {
 
 has_compose_files() {
     local dir="$1"
-    for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         [[ -f "$dir/$cf" ]] && return 0
     done
     return 1
@@ -288,7 +290,7 @@ has_compose_files() {
 
 get_app_compose_file() {
     local dir="$1"
-    for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         if [[ -f "$dir/$cf" ]]; then
             echo "$cf"
             return 0
@@ -757,14 +759,14 @@ run_compose_action_for_app() {
     dir="$(find_app_dir "$folder")"
 
     local canon_file=""
-    for cf in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         if [[ -f "$dir/$cf" ]]; then
             canon_file="$cf"
             break
         fi
     done
     if [[ -z "$canon_file" ]]; then
-        echo -e "${RED}  [ERROR]${NC} No compose.yaml or docker-compose.yml found in '${folder}'."
+        echo -e "${RED}  [ERROR]${NC} No valid compose file (${COMPOSE_FILENAMES[*]}) found in '${folder}'."
         return 1
     fi
 
@@ -922,14 +924,14 @@ run_update_action_for_app() {
     fi
 
     local canon_file=""
-    for cf in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         if [[ -f "$dir/$cf" ]]; then
             canon_file="$cf"
             break
         fi
     done
     if [[ -z "$canon_file" ]]; then
-        echo -e "${RED}  [ERROR]${NC} No compose.yaml or docker-compose.yml found in '${folder}'."
+        echo -e "${RED}  [ERROR]${NC} No valid compose file (${COMPOSE_FILENAMES[*]}) found in '${folder}'."
         return 1
     fi
 
