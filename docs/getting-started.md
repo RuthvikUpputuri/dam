@@ -70,7 +70,7 @@ This is identical to Method 1 but starts from a local clone. The installer symli
 ```bash
 chmod +x dam.sh
 ./dam.sh start <app-name>
-./dam.sh update all except traefik
+./dam.sh update all except <proxy-app>
 ./dam.sh cleanup
 ```
 
@@ -113,20 +113,20 @@ Or, for update operations, an `update*.sh` script.
 
 ```
 /opt/stacks/
-├── traefik/
+├── <proxy-app>/
 │   └── compose.yaml
-├── n8n/
+├── <app-name>/
 │   └── docker-compose.yml
-├── file-share/         # Actual app name is erugo but renamed the dir to file-share for easy remembering
+├── <app-name>/         # Actual app name is <app-name> but renamed the dir to <app-name> for easy remembering
 │   └── docker-compose.yml
-├── homarr/
+├── <app2>/
 │   ├── compose.yaml
-│   └── update-homarr.sh
+│   └── update-<app2>.sh
 └── recovered/          ← ignored by default (in EXCLUDE_DIRS)
     └── old-app/
 ```
 
-The **directory basename** becomes the app name used in DAM commands. In this example: `traefik`, `n8n`, `homarr`, `file-share`.
+The **directory basename** becomes the app name used in DAM commands. In this example: `<proxy-app>`, `<app-name>`, `<app2>`, `<app-name>`.
 
 ---
 

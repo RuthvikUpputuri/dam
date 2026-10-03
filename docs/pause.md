@@ -18,7 +18,7 @@ When the `pause` command is executed for an app, DAM follows a consistent, two-s
 
 ```bash
 # Executed from within the app's directory
-docker compose pause
+docker compose [-f <file>...] pause
 ```
 
 DAM changes the working directory to the app's directory and issues the standard compose pause command.
@@ -62,14 +62,14 @@ After the pause operation completes, DAM prints the current status of the app's 
 
 ```bash
 # Pause a single app
-dkr pause n8n
+dkr pause <app-name>
 
 # Pause multiple specific apps
-dkr pause n8n langflow traefik
+dkr pause <app-name> <app-name-2> <proxy-app>
 
 # Pause all available apps
 dkr pause all
 
 # Pause all apps except the reverse proxy and portainer
-dkr pause all except traefik portainer
+dkr pause all except <proxy-app> portainer
 ```

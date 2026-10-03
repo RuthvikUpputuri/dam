@@ -11,12 +11,12 @@
 Valid modes after `with` are `vol`, `img`, `net`, `buildx`, and `all`.
 
 ```bash
-dkr delete paperless
-dkr delete paperless with vol
-dkr delete paperless with img
-dkr delete paperless with vol img
+dkr delete <app1>
+dkr delete <app1> with vol
+dkr delete <app1> with img
+dkr delete <app1> with vol img
 dkr delete all -y with all
-dkr delete all except traefik -y with buildx
+dkr delete all except <proxy-app> -y with buildx
 ```
 
 Place `-y` or `--yes` before `with`. Once DAM has read `with`, every following argument is interpreted as a cleanup mode, so `delete all with vol -y` is rejected as an unknown cleanup argument.
@@ -34,7 +34,7 @@ There is no additional interactive confirmation for the `with` modes. Treat them
 DAM enters the app directory, detects a supported Compose file, then uses `docker compose` when available or falls back to `docker-compose`. The base command is always:
 
 ```bash
-docker compose down --remove-orphans
+docker compose [-f <file>...] down --remove-orphans
 ```
 
 `--remove-orphans` removes containers from services no longer defined by the current Compose file. DAM then displays `docker compose ps`; status-display failure is ignored after a successful `down`.
@@ -73,16 +73,16 @@ For safety, DAM filters `vol`, `net`, `img`, and `all` out of this post-delete c
 
 ```bash
 # Remove a stack but retain its database volume for a later restore.
-dkr delete vaultwarden
+dkr delete <app3>
 
 # Fully remove one disposable test stack, including its Compose volumes and images.
-dkr delete demo with all
+dkr delete <test-app> with all
 
 # Remove all targetable stacks non-interactively, retaining project data.
 dkr delete all -y
 
 # Remove stacks and clear unused build cache afterwards.
-dkr delete all except traefik -y with buildx
+dkr delete all except <proxy-app> -y with buildx
 ```
 
 Use [Safety & Security](safety.md) before deleting data-bearing applications.

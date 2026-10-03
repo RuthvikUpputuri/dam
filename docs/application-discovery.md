@@ -9,9 +9,9 @@ This document explains exactly how DAM discovers, resolves, and maps application
 DAM uses a filesystem-based discovery model:
 
 ```
-User provides app name (e.g., "n8n")
+User provides app name (e.g., "<app-name>")
     ↓
-DAM searches configured directories for a directory named "n8n"
+DAM searches configured directories for a directory named "<app-name>"
     ↓
 Validates that the directory contains a Compose file (or update script)
     ↓
@@ -97,18 +97,18 @@ Only one Compose file is used per app. If multiple exist, the highest-priority o
 
 ## Name Resolution
 
-When you run a command like `dkr start n8n`, DAM resolves `n8n` through the `find_app_dir()` function:
+When you run a command like `dkr start <app-name>`, DAM resolves `<app-name>` through the `find_app_dir()` function:
 
 ### Step-by-Step Resolution
 
 1. **Cache check**: If the app was previously resolved (or previously failed), return the cached result
 2. **Space check**: If the name contains spaces, return an error
-3. **Search**: Run `find` across all valid search directories looking for a directory named exactly `n8n`
+3. **Search**: Run `find` across all valid search directories looking for a directory named exactly `<app-name>`
 4. **Validate**: For each match, check that it contains a Compose file (or, for `update`/`list` with update mode, an `update*.sh` script)
 5. **Result**:
    - **Exactly 1 match**: Cache and return the path
-   - **Multiple matches**: Error - "Multiple matching apps found for 'n8n'" with all paths listed
-   - **No matches**: Return empty (subsequent code prints "App 'n8n' not found")
+   - **Multiple matches**: Error - "Multiple matching apps found for '<app-name>'" with all paths listed
+   - **No matches**: Return empty (subsequent code prints "App '<app-name>' not found")
 
 ### Caching
 
@@ -214,9 +214,9 @@ SEARCH_DIRS: ["/opt/stacks", "/home/user/apps"]
 EXCLUDE_DIRS: ["recovered", "unused"]
 
 /opt/stacks/
-├── traefik/             ← App "traefik" (has compose.yaml)
+├── <proxy-app>/             ← App "<proxy-app>" (has compose.yaml)
 │   └── compose.yaml
-├── n8n/                 ← App "n8n" (has docker-compose.yml)
+├── <app-name>/                 ← App "<app-name>" (has docker-compose.yml)
 │   ├── docker-compose.yml
 │   └── .env
 ├── recovered/           ← EXCLUDED (name in EXCLUDE_DIRS)
@@ -226,15 +226,15 @@ EXCLUDE_DIRS: ["recovered", "unused"]
     └── scripts/
 
 /home/user/apps/
-├── homarr/              ← App "homarr" (has compose.yaml + update script)
+├── <app2>/              ← App "<app2>" (has compose.yaml + update script)
 │   ├── compose.yaml
-│   └── update-homarr.sh
+│   └── update-<app2>.sh
 └── custom-builder/      ← App "custom-builder" (update-only, no compose file)
     └── update.sh
 
 Discovery Result:
-  traefik  → /opt/stacks/traefik
-  n8n      → /opt/stacks/n8n
-  homarr   → /home/user/apps/homarr
+  <proxy-app>  → /opt/stacks/<proxy-app>
+  <app-name>      → /opt/stacks/<app-name>
+  <app2>   → /home/user/apps/<app2>
   custom-builder → /home/user/apps/custom-builder  (update mode only)
 ```

@@ -1,0 +1,62 @@
+name: Auto-Release Builder
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dam.sh'
+
+jobs:
+  release:
+    # Ignore commits made by the bot itself to prevent infinite loops
+    if: "!contains(github.event.head_commit.message, 'chore: auto-bump version')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Calculate New Version and Update Script
+        id: bump
+        run: |
+          # Extract current version from script
+          CURRENT_VERSION=$(grep -oP '^#VERSION="\K[0-9]+\.[0-9]+\.[0-9]+' dam.sh)
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          
+          # Read the commit message
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          
+          # Calculate new version based on tags in your commit message
+          if [[ "$COMMIT_MSG" == *"[major]"* ]]; then
+            NEW_VERSION="$((major + 1)).0.0"
+          elif [[ "$COMMIT_MSG" == *"[minor]"* ]]; then
+            NEW_VERSION="${major}.$((minor + 1)).0"
+          else
+            NEW_VERSION="${major}.${minor}.$((patch + 1))"
+          fi
+          
+          echo "Bumping from $CURRENT_VERSION to $NEW_VERSION"
+          
+          # Update the file
+          sed -i "s/#VERSION=\"$CURRENT_VERSION\"/#VERSION=\"$NEW_VERSION\"/" dam.sh
+          
+          # Export to next steps
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Commit version bump
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: auto-bump version to ${{ env.NEW_VERSION }}"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use the official GitHub CLI to create the release and tag
+          gh release create "v${{ env.NEW_VERSION }}" \
+            --title "v${{ env.NEW_VERSION }}" \
+            --generate-notes

@@ -7,17 +7,17 @@ This page is the command map for DAM. It describes the parsing and dispatch beha
 DAM can be called in three ways:
 
 ```bash
-# Custom-prefix installation.
-dkr update n8n
+# Custom-prefix command installation('dkr' is default command name).
+dkr update <app-name>
 
 # Direct script invocation.
-./dam.sh update n8n
+./dam.sh update <app-name>
 
 # Raw-command installation, where the symlink name supplies the action.
-update n8n
+update <app-name>
 ```
 
-When the script is invoked through a symlink named after a supported action, it prepends that action internally. For example, `frec n8n` is parsed as `force-recreate n8n`.
+When the script is invoked through a symlink named after a supported action, it prepends that action internally. For example, `frec <app-name>` is parsed as `force-recreate <app-name>`.
 
 Most operational commands require all of the following before DAM processes apps:
 
@@ -34,10 +34,10 @@ The standard selector is used by `start`, `stop`, `restart`, `recreate`, `force-
 
 | Pattern | Meaning |
 | :-- | :-- |
-| `<cmd> <action> app1` | One app directory |
-| `<cmd> <action> app1 app2` | Multiple app directories, processed sequentially |
-| `<cmd> <action> all` | Every discovered app eligible for that action |
-| `<cmd> <action> all except app1 app2` | All eligible apps other than the named apps |
+| `<cmd> <action> app1 [using files...]` | One app directory |
+| `<cmd> <action> app1 app2 [using files...]` | Multiple app directories, processed sequentially |
+| `<cmd> <action> all [using files...]` | Every discovered app eligible for that action |
+| `<cmd> <action> all except app1 app2 [using files...]` | All eligible apps other than the named apps |
 
 App names are exact directory basenames and cannot contain whitespace. DAM searches `SEARCH_DIRS` to `MAX_SEARCH_DEPTH` (default `5`), skips configured `EXCLUDE_DIRS`, and recognizes an app when it contains a standard Compose filename or, for update discovery, an `update*.sh` file. A name resolving to multiple directories is an error.
 
@@ -59,7 +59,37 @@ Every non-`get` lifecycle command prints a per-app section and a final summary o
 | `delete` | `down --remove-orphans` plus optional flags | Removes a project and then runs safe dangling-image cleanup. |
 | `update` | Pull, build, optionally recreate | Uses a custom `update*.sh` when found and permitted; otherwise preserves stopped state. |
 
-Each Compose action executes inside the resolved application directory. DAM recognizes `compose.yaml`, `compose.yml`, `docker-compose.yaml`, and `docker-compose.yml`, in that order. It prints `docker compose ps` after the action as an informational status display.
+### Default Compose Files
+
+Each Compose action executes inside the resolved application directory. By default, Docker Compose natively searches for a primary file to execute. Whenever DAM refers to falling back to the "default file", it means relying on this native Docker Compose behavior, which searches in this strict priority order:
+
+1. `compose.yaml`
+2. `compose.yml`
+3. `docker-compose.yaml`
+4. `docker-compose.yml`
+
+You can explicitly override this default behavior by appending `using <file1> <file2>...` to the command.
+
+### The `using` Modifier
+
+The `using` modifier explicitly merges provided files in order by dynamically appending `-f <file1> -f <file2>...` flags to the underlying `docker compose` command. 
+
+DAM employs an intelligent shorthand resolution algorithm for every file requested via `using`. For each `<file>`, DAM searches the app directory, stopping at the first match it finds. The precedence order is:
+
+1. **Exact match**: `<file>`
+2. **With `.yaml` extension**:
+   - `<file>.yaml`
+   - `compose.<file>.yaml`
+   - `docker-compose.<file>.yaml`
+3. **With `.yml` extension**:
+   - `<file>.yml`
+   - `compose.<file>.yml`
+   - `docker-compose.<file>.yml`
+
+> [!NOTE]
+> Because the bare filename without a prefix takes precedence for a given extension, if an app has both `<name>.yml` and `compose.<name>.yml` and you specify `using <name>`, **`<name>.yml` will be selected**. To target the prefixed file, you must be explicit (e.g., `using compose.<name>`).
+
+If **at least one** custom file is matched using this logic, DAM strictly uses the found files and emits a warning for any requested file that was not found for that app. If **none** of the requested custom files can be resolved in an app, DAM will fall back to the default file for that app. At the very end of the run, DAM outputs a global summary listing any file shorthands that were not matched in *any* processed app, as well as a list of specific apps that were missing partially matched files.
 
 Read the dedicated pages for [start](start.md), [stop](stop.md), [restart](restart.md), [recreate](recreate.md), [force-recreate](force-recreate.md), [pause](pause.md), [unpause](unpause.md), [delete](delete.md), and [update](update.md).
 

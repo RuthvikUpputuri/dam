@@ -8,20 +8,13 @@ This document honestly describes the architectural limitations, edge cases, and 
 
 ### One Compose Project Per Directory
 
-DAM fundamentally assumes **one Compose project per directory**. It does not support:
+DAM fundamentally manages **one core Compose project per directory**.
 
-- Selecting specific Compose files within a directory (e.g., `docker-compose.prod.yml` vs `docker-compose.dev.yml`)
-- Custom override file combinations via the `-f` flag (e.g., `docker compose -f base.yml -f custom.yml up`)
+By default, DAM executes `docker compose` without explicit `-f` flags, so standard override files (like `docker-compose.override.yml` or `compose.override.yaml`) **are** automatically detected and merged by Docker Compose itself.
 
-**Note on Override Files**: Because DAM natively executes `docker compose` without explicit `-f` flags, standard override files (like `docker-compose.override.yml` or `compose.override.yaml`) **are** automatically detected and merged by Docker Compose itself.
+If a directory contains multiple *primary* Compose files and you don't use the `using` modifier, Docker Compose natively processes only the first one it finds. See [Default Compose Files in commands.md](commands.md#default-compose-files) for the exact priority order.
 
-If a directory contains multiple *primary* Compose files, Docker Compose natively processes only the first one it finds in this priority order:
-1. `compose.yaml`
-2. `compose.yml`
-3. `docker-compose.yaml`
-4. `docker-compose.yml`
-
-The other primary files are ignored (though their respective `.override.yml` files will be merged into the selected primary file).
+The other primary files are ignored unless explicitly specified with the `using` modifier.
 
 ### Directory-Based Naming
 
@@ -75,13 +68,6 @@ DAM does not manage `.env` files or environment variable interpolation. These ar
 
 Docker Compose's `include:` directive (for splitting large Compose files) is handled natively by Docker Compose, not by DAM. DAM only detects the presence of the main Compose file - it does not parse or validate its contents.
 
-### Multi-File Compose Configurations
-
-DAM does not support `-f` flag usage for specifying multiple Compose files:
-```bash
-# DAM cannot do this:
-docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
-```
 
 ### Compose Watch / Develop
 
@@ -108,7 +94,7 @@ The `debug` command is a placeholder that outputs "[TODO] Debug feature is comin
 ### `get` Command Limitations
 
 **1. Single Resource Fetching**
-You can only query exactly **one** raw resource type per command. Trying to chain them (like `dkr get n8n cid vol`) will explicitly fail. If you need multiple metrics, you must either run the command twice or use the `info` table.
+You can only query exactly **one** raw resource type per command. Trying to chain them (like `dkr get <app-name> cid vol`) will explicitly fail. If you need multiple metrics, you must either run the command twice or use the `info` table.
 
 **2. Resource Output Format**
 The `get` command's output format differs based on whether a specific service is targeted:
@@ -129,6 +115,10 @@ The `status` command matches containers using Docker labels (`com.docker.compose
 ### `list` Inventory Without Docker
 
 If Docker is available, `list` enriches the output with container status. If Docker is not running, the `list` command still works for inventory but shows "inactive" for all apps.
+
+### `list` and Custom Compose Files
+
+The `list` command strictly outputs the *primary* Compose file detected during discovery (e.g., `compose.yaml`). Appending `using <file1>...` to a `list` command will not change the "COMPOSE FILE" column in the output.
 
 ---
 
@@ -225,3 +215,7 @@ If `UPDATE_SHA256` is not set (the default), self-update performs only basic val
 4. **App name matching is case-sensitive**: `dkr start N8n` will not match a directory named `n8n`.
 
 5. **Concurrent DAM invocations**: Running multiple DAM instances simultaneously for the same apps could cause conflicts. There is no locking mechanism.
+
+6. **The `using` modifier file priority**: A bare file like `<name>.yml` will take precedence over a prefixed file like `compose.<name>.yml` when using a shorthand like `using <name>`. See [The `using` Modifier in commands.md](commands.md#the-using-modifier) for the exact resolution priority order.
+
+7. **The `using` modifier with partial matches**: If you provide multiple files (e.g., `using base prod`) and an app only has `base.yml` but not `prod.yml`, DAM will strictly run with just `base.yml` and print a warning that `prod` was not found for that specific app. It only falls back to the default compose file if *none* of the requested files are found. At the very end of the run, DAM prints a global summary explicitly listing which specific apps were missing the file.

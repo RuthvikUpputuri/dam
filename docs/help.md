@@ -42,7 +42,7 @@ Lists all the actions DAM supports. This is dynamically generated based on the s
 - **System Commands**: [`install`](install.md), [`config`](config.md), [`self-update`](self-update.md), [`uninstall`](uninstall.md), [`help`](help.md).
 
 ### 3. Usage Examples
-Provides concrete examples of how to format commands, use the `<app>` selector, and combine multiple arguments. This section explicitly demonstrates the `all` and `all except` syntax.
+Provides concrete examples of how to format commands, use the `<app>` selector, and combine multiple arguments. This section explicitly demonstrates the `all`, `all except`, and `[using files...]` syntax.
 
 ### 4. Available Apps
 The help output dynamically scans your system based on the `SEARCH_DIRS` configured in `/etc/docker-app-manager.conf` and prints a columnar list of all discovered applications. 

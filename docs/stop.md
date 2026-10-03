@@ -18,7 +18,7 @@ When the `stop` command is executed for an app, DAM follows a consistent, two-st
 
 ```bash
 # Executed from within the app's directory
-docker compose stop
+docker compose [-f <file>...] stop
 ```
 
 DAM changes the working directory to the app's directory and issues the standard compose stop command.
@@ -62,14 +62,14 @@ After the stop operation completes, DAM prints the current status of the app's s
 
 ```bash
 # Stop a single app
-dkr stop n8n
+dkr stop <app-name>
 
 # Stop multiple specific apps
-dkr stop n8n langflow traefik
+dkr stop <app-name> <app-name-2> <proxy-app>
 
 # Stop all available apps
 dkr stop all
 
 # Stop all apps except the reverse proxy and portainer
-dkr stop all except traefik portainer
+dkr stop all except <proxy-app> portainer
 ```

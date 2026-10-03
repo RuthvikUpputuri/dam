@@ -31,10 +31,10 @@ An app that is missing or ambiguous is still recorded as failed. An excluded app
 
 The current parser also recognizes the log-style keywords `last`, `first`, `since`, `until`, `live`, `follow`, `time`, and `timestamps`, plus numeric values such as `10` or `30m`, while handling `debug`. It removes those tokens from the app selection, but the placeholder ignores them completely.
 
-For example, this currently performs the same placeholder operation as `dkr debug n8n`:
+For example, this currently performs the same placeholder operation as `dkr debug <app-name>`:
 
 ```bash
-dkr debug n8n last 100
+dkr debug <app-name> last 100
 ```
 
 This is not a supported diagnostics feature and should not be relied on. Other words are treated as app names and may therefore produce normal app-not-found failures.

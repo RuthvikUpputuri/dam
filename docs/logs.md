@@ -10,9 +10,9 @@ The `logs` command allows you to view the standard output (`stdout`) and standar
 
 > This logs command is still in development phase and is not fully integrated with traditional docker compose logs, so please expect bugs or unexpected behavior and be patient.
 
-> DAM operates at the project/app level. If you have an app like `n8n` that has multiple services inside its `compose.yaml` (e.g., `n8n`, `postgres`, `redis`), DAM's `logs` command will always fetch and interleave the logs for all three services at once.
+> DAM operates at the project/app level. If you have an app like `<app-name>` that has multiple services inside its `compose.yaml` (e.g., `<app-name>`, `postgres`, `redis`), DAM's `logs` command will always fetch and interleave the logs for all three services at once.
 
-If you try to specify a service name, like: `dkr logs n8n postgres`
+If you try to specify a service name, like: `dkr logs <app-name> postgres`
 
 DAM will think `postgres` is a second app folder, fail to find it, and throw an error.
 
@@ -22,19 +22,19 @@ DAM will think `postgres` is a second app folder, fail to find it, and throw an 
 
 ```bash
 # View all logs for a single app
-dkr logs n8n
+dkr logs <app-name>
 
 # View the last 100 lines
-dkr logs n8n last 100
+dkr logs <app-name> last 100
 
 # View the first 50 lines (piped through head)
-dkr logs n8n first 50
+dkr logs <app-name> first 50
 
 # Chain multiple keywords: last 10 lines, live stream, with timestamps
-dkr logs n8n last 10 live time
+dkr logs <app-name> last 10 live time
 
 # View logs from the last 30 minutes
-dkr logs n8n since 30m
+dkr logs <app-name> since 30m
 
 # View static logs for all apps (no 'live' allowed)
 dkr logs all last 20
@@ -60,7 +60,7 @@ DAM parses the arguments sequentially, looking for specific keywords to translat
 **Special Case: `first <N>`**
 Because Docker Compose does not natively support a `--head` or `first` flag, DAM intercepts this keyword. Instead of passing a flag, DAM pipes the output of the entire command through standard Unix `head`:
 ```bash
-docker compose logs [flags] | head -n <N>
+docker compose [-f <file>...] logs [flags] | head -n <N>
 ```
 To safely handle broken pipe errors that occur when `head` closes the stream early, DAM temporarily disables `set -o pipefail` for this specific execution block in `dam.sh`.
 
@@ -78,7 +78,7 @@ DAM intentionally blocks you from using `live` or `follow` when querying `all` a
 
 ```bash
 # Executed from within the app's directory
-docker compose logs [translated-flags]
+docker compose [-f <file>...] logs [translated-flags]
 ```
 
 DAM changes the working directory to the app's directory and executes the log fetch.

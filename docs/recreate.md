@@ -20,7 +20,7 @@ When the `recreate` command is executed for an app, DAM follows a consistent, th
 
 ```bash
 # Executed from within the app's directory
-docker compose down --remove-orphans
+docker compose [-f <file>...] down --remove-orphans
 ```
 
 DAM brings down the entire project cleanly.
@@ -32,7 +32,7 @@ DAM brings down the entire project cleanly.
 ### Step 2: Recreate Containers (2/3)
 
 ```bash
-docker compose up -d
+docker compose [-f <file>...] up -d
 ```
 
 Immediately after teardown, DAM brings the stack back up in detached mode. 
@@ -82,14 +82,14 @@ DAM prints the current status of the app's services to confirm that the fresh co
 
 ```bash
 # Clean recreate a single app
-dkr recreate n8n
+dkr recreate <app-name>
 
 # Recreate multiple specific apps
-dkr recreate n8n langflow traefik
+dkr recreate <app-name> <app-name-2> <proxy-app>
 
 # Recreate all available apps
 dkr recreate all
 
 # Recreate all apps except the reverse proxy and portainer
-dkr recreate all except traefik portainer
+dkr recreate all except <proxy-app> portainer
 ```

@@ -39,7 +39,7 @@ DAM prompts for folder names to permanently ignore during scans.
 ### Step 4: Custom Command Name
 DAM configures how you invoke it globally.
 - **Raw Commands**: If you enter `none`, DAM creates global symlinks for every individual action (`start`, `stop`, `update`, etc.). DAM will aggressively scan your system's `PATH` to ensure these generic names don't conflict with existing system binaries.
-- **Custom Prefix**: The recommended approach. If you enter a name like `dkr`, `dam`, or `app`, DAM creates a single symlink, allowing you to run commands like `dkr update n8n`.
+- **Custom Prefix**: The recommended approach. If you enter a name like `dkr`, `dam`, or `app`, DAM creates a single symlink, allowing you to run commands like `dkr update <app-name>`.
 
 ### Step 5: Security & Updates
 - **Custom Update Scripts**: DAM asks whether `update*.sh` scripts should execute automatically (`true`) or require interactive confirmation (`false`) during an `update` action.

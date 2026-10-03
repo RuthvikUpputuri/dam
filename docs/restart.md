@@ -18,7 +18,7 @@ When the `restart` command is executed for an app, DAM follows a consistent, two
 
 ```bash
 # Executed from within the app's directory
-docker compose restart
+docker compose [-f <file>...] restart
 ```
 
 DAM changes the working directory to the app's directory and issues the standard compose restart command.
@@ -64,14 +64,14 @@ After the restart operation completes, DAM prints the current status of the app'
 
 ```bash
 # Restart a single app
-dkr restart n8n
+dkr restart <app-name>
 
 # Restart multiple specific apps
-dkr restart n8n langflow traefik
+dkr restart <app-name> <app-name-2> <proxy-app>
 
 # Restart all available apps
 dkr restart all
 
 # Restart all apps except the reverse proxy and portainer
-dkr restart all except traefik portainer
+dkr restart all except <proxy-app> portainer
 ```

@@ -29,7 +29,11 @@ dkr list
 4. It identifies valid "apps" by looking for standard compose files (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml`) or custom update scripts (`update*.sh`).
 
 ### Status Determination
-DAM performs a single `docker ps -a` query filtered by the `com.docker.compose.project` label to determine the state of all compose projects simultaneously. This is highly optimized and avoids querying Docker individually for each app.
+DAM performs a single optimized query to determine the state of all compose projects simultaneously, populating an internal cache:
+```bash
+docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}'
+```
+This entirely avoids querying Docker individually for each app.
 
 ### Output Table Columns
 - **APP**: The discovered directory name (which acts as the app name).
@@ -60,9 +64,9 @@ dkr list all except <app-name> [app-name ...]
 3. If an app cannot be found, it is simply omitted from the final table.
 
 ### Status Determination
-For each specified app, DAM runs targeted Docker queries to determine the state:
-1. It checks if any container with `label=com.docker.compose.project=<app_name>` has `status=running`.
-2. If not, it checks if any container with that project label exists at all (meaning it is `stopped`).
+For each specified app, DAM uses the same highly optimized global `docker ps -a` query cache to determine the state, rather than running individual Docker queries for each app.
+1. It checks the cache to see if the app has a `running` status.
+2. If not, it checks the cache to see if the app is `stopped` (meaning containers exist but none are running).
 
 ### Output Table Columns
 - **APP**: The requested app name.
@@ -77,7 +81,7 @@ For each specified app, DAM runs targeted Docker queries to determine the state:
 While they sound similar, they produce different output using different mechanics:
 
 - **`dkr list` (No arguments):** A highly-optimized **Global Inventory Scan**. It scans your directories and outputs *everything* it finds, including apps/directories you have explicitly excluded (which it marks with status `excluded`). It does this incredibly fast using a single Docker query.
-- **`dkr list all` (With arguments):** A targeted **Detailed App-Level Query**. Because it uses the word `all`, it goes through DAM's standard target parsing. It builds a list of *targetable apps*, meaning any excluded apps are entirely stripped out. It then runs individual Docker queries per app to determine their exact running state. 
+- **`dkr list all` (With arguments):** A targeted **Detailed App-Level Query**. Because it uses the word `all`, it goes through DAM's standard target parsing. It builds a list of *targetable apps*, meaning any excluded apps are entirely stripped out. It then reads their status from the same optimized global Docker query cache to determine their exact running state. 
 
 ---
 
@@ -88,13 +92,13 @@ While they sound similar, they produce different output using different mechanic
 dkr list
 
 # Runs the detailed app-level query for specific apps
-dkr list homarr n8n traefik
+dkr list <app2> <app-name> <proxy-app>
 
 # Runs the detailed app-level query for ALL targetable apps (omits excluded ones)
 dkr list all
 
 # Runs the detailed app-level query for all apps EXCEPT specific ones
-dkr list all except traefik portainer
+dkr list all except <proxy-app> portainer
 ```
 
 ---

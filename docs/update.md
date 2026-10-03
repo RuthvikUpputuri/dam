@@ -35,10 +35,10 @@ This determines whether the app should be restarted after the update.
 
 ```bash
 # Preferred (newer Docker Compose):
-docker compose pull --ignore-buildable
+docker compose [-f <file>...] pull --ignore-buildable
 
 # Fallback (older Docker Compose):
-docker compose pull --ignore-pull-failures
+docker compose [-f <file>...] pull --ignore-pull-failures
 ```
 
 DAM dynamically checks whether `--ignore-buildable` is supported by inspecting `docker compose pull --help`. If the flag is not found in the help output, it falls back to `--ignore-pull-failures`.
@@ -52,7 +52,7 @@ DAM dynamically checks whether `--ignore-buildable` is supported by inspecting `
 ### Step 3: Build Images (2/4)
 
 ```bash
-docker compose build --pull
+docker compose [-f <file>...] build --pull
 ```
 
 This rebuilds any services that have a `build` section in the Compose file. The `--pull` flag ensures that **base images** (the `FROM` line in Dockerfiles) are refreshed from the registry, not just pulled from the local cache.
@@ -63,7 +63,7 @@ This rebuilds any services that have a `build` section in the Compose file. The 
 
 **If the app was running:**
 ```bash
-docker compose up -d
+docker compose [-f <file>...] up -d
 ```
 
 This recreates containers with the newly pulled/built images. Docker Compose detects that images have changed and recreates the relevant containers.
@@ -212,8 +212,11 @@ By default (no `with` modifiers):
 
 ```bash
 # Update a single app (standard compose flow)
-dkr update n8n
+dkr update <app-name>
 
 # Update all apps except the reverse proxy
-dkr update all except traefik
+dkr update all except <proxy-app>
+
+# Update an app with a custom set of compose files
+dkr update myapp using compose dev prod
 ```

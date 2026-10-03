@@ -50,7 +50,7 @@ dkr get <app> info
 
 For all other resources, DAM drops the formatting, suppresses the standard startup header, and returns exactly what you asked for.
 
-> **CRITICAL LIMITATION:** You can only ask for **one** raw resource type at a time (e.g. `dkr get n8n cid`). You cannot combine them (e.g. `dkr get n8n cid iid`). If you need multiple fields simultaneously, use the `info` resource instead.
+> **CRITICAL LIMITATION:** You can only ask for **one** raw resource type at a time (e.g. `dkr get <app-name> cid`). You cannot combine them (e.g. `dkr get <app-name> cid iid`). If you need multiple fields simultaneously, use the `info` resource instead.
 
 | Resource Argument | Accepted Aliases | What It Returns |
 | :------- | :------ | :-------------- |
@@ -69,8 +69,8 @@ By default, Docker and DAM artificially truncate the Container ID and Image ID t
 *(Note: The `full` modifier has no effect on the `info` tables, only on raw scriptable output).*
 
 ```bash
-dkr get n8n:redis full cid   # Returns the 64-character container ID
-dkr get n8n:redis full iid   # Returns the 64-character image ID
+dkr get <app-name>:redis full cid   # Returns the 64-character container ID
+dkr get <app-name>:redis full iid   # Returns the 64-character image ID
 ```
 
 ### Output Prefixing Behavior
@@ -78,14 +78,14 @@ dkr get n8n:redis full iid   # Returns the 64-character image ID
 To make the output scriptable but still legible when dealing with multiple containers, DAM intelligently formats the raw output based on how specific your target was:
 
 **1. Targeting an Entire App (Implicit Services)**
-If you ask for a resource of an app with multiple services (e.g., `dkr get n8n cid`), DAM will prefix the output with the service name so you know which ID belongs to which container:
+If you ask for a resource of an app with multiple services (e.g., `dkr get <app-name> cid`), DAM will prefix the output with the service name so you know which ID belongs to which container:
 ```text
 redis: 123456789abc
-n8n: abcdef123456
+<app-name>: abcdef123456
 ```
 
 **2. Targeting a Specific Service (Explicit Service)**
-If you specifically target a single service using the colon syntax (e.g., `dkr get n8n:redis cid`), DAM assumes you are piping this into another script. It drops the prefix entirely and returns **just the value**:
+If you specifically target a single service using the colon syntax (e.g., `dkr get <app-name>:redis cid`), DAM assumes you are piping this into another script. It drops the prefix entirely and returns **just the value**:
 ```text
 123456789abc
 ```
@@ -98,7 +98,7 @@ Because `get` suppresses the header when returning raw data, you can pipe it dir
 
 **1. Restarting a specific container manually:**
 ```bash
-docker restart $(dkr get n8n:redis cid)
+docker restart $(dkr get <app-name>:redis cid)
 ```
 
 **2. Finding out exactly where a specific service is storing its data:**
@@ -108,14 +108,14 @@ dkr get my-app:database vol
 
 **3. Inspecting the image of a specific service:**
 ```bash
-docker inspect $(dkr get traefik:traefik iid)
+docker inspect $(dkr get <proxy-app>:<proxy-app> iid)
 ```
 
 **4. Seeing the health status of an entire app stack:**
 ```bash
-dkr get n8n health
+dkr get <app-name> health
 ```
-*(Output might look like: `redis: healthy`, `n8n: starting`)*
+*(Output might look like: `redis: healthy`, `<app-name>: starting`)*
 
 **5. Getting all network attachments for every app except your VPN:**
 ```bash
@@ -156,6 +156,6 @@ This flexibility applies to *all* resources, including the `info` table. For exa
 - `dkr get net all except vpn`
 
 And the exact same rule applies when requesting the deep-dive `info` tables too:
-- `dkr get info homarr traefik`
-- `dkr get homarr info traefik`
-- `dkr get homarr traefik info`
+- `dkr get info <app2> <proxy-app>`
+- `dkr get <app2> info <proxy-app>`
+- `dkr get <app2> <proxy-app> info`

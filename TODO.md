@@ -17,7 +17,6 @@ DAM should make common operations on application stacks easier, not become a sec
 These are not commitments or active work. Revisit them when there is a demonstrated user need.
 
 - **Compose profiles:** Consider support for profiles in app operations. Prefer forwarding familiar Compose options where practical over inventing a DAM-specific command model.
-- **Multiple Compose files:** Consider support for override/extension files while preserving native Compose semantics.
 - **Health-aware update verification:** After an update, optionally wait for services with declared health checks and fail with a clear report if they become unhealthy. Define which services are checked and a strict timeout; do not automatically roll back.
 - **Structured output:** If users need to script DAM, consider stable JSON for `list`, `status`, and diagnostics. `get` already provides scriptable output. A `--no-color` option is a smaller usability improvement.
 - **Remote Docker hosts:** Document that Docker contexts and `DOCKER_HOST` are honored by the Docker CLI, and that app files must exist on the machine running DAM. No separate remote-management layer is needed.

@@ -25,10 +25,11 @@ DAM first checks its internal configuration for `UPDATE_URL`.
 ### Step 2: Download
 
 ```bash
+# Executed with strict umask 077
 curl -fsSLo /tmp/docker-app-manager-XXXXXX.tmp "$UPDATE_URL"
 ```
 
-DAM uses `curl` to silently download the latest script into a secure temporary file.
+DAM uses `curl` to silently download the latest script into a secure temporary file created with strict permissions (`umask 077`) to prevent local tampering.
 
 ### Step 3: Syntax and Safety Validation
 

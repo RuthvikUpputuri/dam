@@ -59,7 +59,7 @@ Are you absolutely sure you want to proceed? [y/N]
 
 ```
 [WARNING] YOU ARE ABOUT TO DELETE UNUSED NETWORKS!
-This will remove externally managed networks (e.g. Traefik proxy) if no containers are currently attached, which can break stacks that are stopped.
+This will remove externally managed networks (e.g. a reverse proxy network) if no containers are currently attached, which can break stacks that are stopped.
 Are you absolutely sure you want to prune networks? [y/N]
 ```
 
@@ -68,7 +68,7 @@ Are you absolutely sure you want to prune networks? [y/N]
 When `ALLOW_CUSTOM_UPDATE_SCRIPTS` is `false` (default):
 
 ```
-[INFO] Custom update script found: update-homarr.sh
+[INFO] Custom update script found: update-<app2>.sh
 Do you want to run this custom update script? [y/N]
 ```
 
@@ -101,7 +101,7 @@ dkr delete all -y
 ### Default: `delete <app>`
 
 ```
-docker compose down --remove-orphans
+docker compose [-f <file>...] down --remove-orphans
 ```
 
 | Resource | Removed? |
@@ -117,7 +117,7 @@ docker compose down --remove-orphans
 ### `delete <app> with vol`
 
 ```
-docker compose down --remove-orphans -v
+docker compose [-f <file>...] down --remove-orphans -v
 ```
 
 Additionally removes:
@@ -127,7 +127,7 @@ Additionally removes:
 ### `delete <app> with img`
 
 ```
-docker compose down --remove-orphans --rmi all
+docker compose [-f <file>...] down --remove-orphans --rmi all
 ```
 
 Additionally removes:
@@ -136,7 +136,7 @@ Additionally removes:
 ### `delete <app> with all`
 
 ```
-docker compose down --remove-orphans -v --rmi all
+docker compose [-f <file>...] down --remove-orphans -v --rmi all
 ```
 
 Removes everything inside the project scope: containers, networks, volumes, and images. *(Note: it does not automatically include global `buildx` pruning)*.
@@ -252,7 +252,7 @@ The config file (`/etc/docker-app-manager.conf`) is sourced as Bash. If an attac
 - Validates the shebang line
 - Runs `bash -n` syntax check
 - Optional SHA-256 verification via `UPDATE_SHA256`
-- Downloaded file goes to `/tmp` briefly, then to `/usr/local/bin/`
+- Downloaded file goes to `/tmp` briefly (created with strict `umask 077` to prevent tampering), then to `/usr/local/bin/`
 
 **Potential concern:** If `UPDATE_SHA256` is not set (the default), there is no integrity verification beyond the basic checks. An attacker who compromises the `UPDATE_URL` endpoint could serve malicious code.
 

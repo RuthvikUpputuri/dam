@@ -232,16 +232,16 @@ If one app fails during a multi-app operation (e.g., `update all`):
 dkr list
 
 # Check details for specific apps:
-dkr list n8n traefik
+dkr list <app-name> <proxy-app>
 
 # View detailed container info:
-dkr get n8n info
+dkr get <app-name> info
 
 # Check container states:
-dkr get n8n state
+dkr get <app-name> state
 
 # Check health:
-dkr get n8n health
+dkr get <app-name> health
 
 # View the configuration file:
 cat /etc/docker-app-manager.conf

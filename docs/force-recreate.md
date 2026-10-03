@@ -27,8 +27,8 @@ For each selected application, DAM finds the first recognized Compose filename i
 It changes into that directory and runs the available Compose implementation, preferring `docker compose` and falling back to `docker-compose`:
 
 ```bash
-docker compose down --remove-orphans -t 0
-docker compose up -d --force-recreate
+docker compose [-f <file>...] down --remove-orphans -t 0
+docker compose [-f <file>...] up -d --force-recreate
 docker compose ps
 ```
 
@@ -37,7 +37,7 @@ The final status command is informational. A failure to print status does not ch
 ### Step 1: Immediate Teardown
 
 ```bash
-docker compose down --remove-orphans -t 0
+docker compose [-f <file>...] down --remove-orphans -t 0
 ```
 
 `-t 0` requests a zero-second shutdown timeout. This is the key difference from [recreate.md](recreate.md): services receive no normal grace period to finish work before Compose removes them. Use it only when a graceful `recreate` cannot stop the stack or when immediate replacement is acceptable.
@@ -49,7 +49,7 @@ By default, Compose project volumes and images are preserved. The command does n
 ### Step 2: Forced Creation
 
 ```bash
-docker compose up -d --force-recreate
+docker compose [-f <file>...] up -d --force-recreate
 ```
 
 `--force-recreate` tells Compose to replace service containers regardless of whether its change detection believes replacement is necessary. The stack is started detached using the current Compose configuration; Compose creates the project networks and containers again as needed.
@@ -77,10 +77,10 @@ No confirmation is required for a single app or for `all`; the operation is disr
 dkr force-recreate immich
 
 # The compact alias has identical behavior.
-dkr frec n8n
+dkr frec <app-name>
 
 # Replace all targetable stacks except infrastructure that should remain up.
-dkr force-recreate all except traefik portainer
+dkr force-recreate all except <proxy-app> portainer
 ```
 
 ## What It Does Not Do
@@ -88,5 +88,5 @@ dkr force-recreate all except traefik portainer
 - It does not pull newer images or rebuild local images. Use [update.md](update.md) for that workflow.
 - It does not remove named volumes or service images.
 - It does not target one service within a project; every Compose service in the application directory is affected.
-- It does not support Swarm, Kubernetes, or manually selected multiple Compose files.
+- It does not support Swarm or Kubernetes.
 

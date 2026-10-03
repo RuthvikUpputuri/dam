@@ -18,7 +18,7 @@ When the `start` command is executed for an app, DAM follows a consistent, two-s
 
 ```bash
 # Executed from within the app's directory
-docker compose up -d
+docker compose [-f <file>...] up -d
 ```
 
 DAM changes the working directory to the app's directory and issues the standard `up -d` command.
@@ -64,14 +64,17 @@ After the containers are created and started, DAM prints the current status of t
 
 ```bash
 # Start a single app
-dkr start n8n
+dkr start <app-name>
 
 # Start multiple specific apps
-dkr start n8n langflow traefik
+dkr start <app-name> <app-name-2> <proxy-app>
 
 # Start all available apps
 dkr start all
 
 # Start all apps except the reverse proxy and portainer
-dkr start all except traefik portainer
+dkr start all except <proxy-app> portainer
+
+# Start an app merging specific compose files (e.g. dev and prod)
+dkr start <app-name> using compose dev prod
 ```

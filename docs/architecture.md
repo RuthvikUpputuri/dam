@@ -20,7 +20,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    User invocation                       │
-│  e.g., "dkr start n8n" or "start n8n" or "./dam.sh ..." │
+│  e.g., "dkr start <app-name>" or "start <app-name>" or "./dam.sh ..." │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
@@ -138,6 +138,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 | `find_app_dir()` | 107-177 | Resolves an app name to a directory path. Uses caching. |
 | `has_compose_files()` | 280-286 | Checks if a directory contains any compose file |
 | `get_app_compose_file()` | 288-303 | Returns the highest-priority compose filename |
+| `resolve_compose_files()` | 316-338 | Resolves `using` files logic into `-f` arguments for compose |
 | `has_update_files()` | 305-312 | Checks if a directory has compose files OR update scripts |
 | `get_all_apps()` | 495-524 | Returns all discovered app names (for `all` selector) |
 | `is_excluded()` | 241-247 | Checks if a folder name is in EXCLUDE_DIRS |
@@ -265,7 +266,7 @@ DAM uses ANSI color codes for structured, visually clear output:
 Each app operation is visually separated with a section header:
 ```
 ┌─────────────────────────────────────────────────────
-│  start: n8n
+│  start: <app-name>
 └─────────────────────────────────────────────────────
 ```
 
@@ -276,7 +277,7 @@ The final summary shows:
   Total apps processed : 3
   ✔ Successful         : 2
   ✘ Failed             : 1
-  Successful apps: n8n homarr
+  Successful apps: <app-name> <app2>
   Failed apps:     broken-app
 ═════════════════════════════════════════════════════
 ```
@@ -290,21 +291,21 @@ Understanding how DAM (Docker App Manager) interacts with your system and Docker
 
 DAM's fundamental philosophy is that **directories equal projects**.
 
-1. **Human-Facing Application Name**: The name you type in the CLI (e.g., `n8n`).
+1. **Human-Facing Application Name**: The name you type in the CLI (e.g., `<app-name>`).
 2. **Application Directory**: DAM searches its configured `SEARCH_DIRS` for a folder exactly matching this name. This directory is treated as the application's home.
 3. **Compose File**: DAM looks inside the discovered directory for a standard Docker Compose file (e.g., `docker-compose.yml`, `compose.yaml`).
 4. **Docker Compose Project**: When executing commands, DAM sets the application directory as the working directory (`PWD`). Docker Compose then uses the directory's basename as the **Project Name** by default.
 
 ```text
-User Input: "n8n"
+User Input: "<app-name>"
        ↓
-DAM discovers: /opt/stacks/n8n/
+DAM discovers: /opt/stacks/<app-name>/
        ↓
-DAM finds: /opt/stacks/n8n/docker-compose.yml
+DAM finds: /opt/stacks/<app-name>/docker-compose.yml
        ↓
-DAM executes: docker compose up -d (with /opt/stacks/n8n/ as PWD)
+DAM executes: docker compose up -d (with /opt/stacks/<app-name>/ as PWD)
        ↓
-Docker Compose creates resources labeled with project "n8n"
+Docker Compose creates resources labeled with project "<app-name>"
 ```
 
 ---
@@ -313,7 +314,7 @@ Docker Compose creates resources labeled with project "n8n"
 
 ### Host Filesystem vs Docker-Managed Resources
 
-- **Host Filesystem**: The directories (e.g., `/opt/stacks/traefik`) where your Compose files and local bind mounts live. DAM's discovery process relies entirely on this.
+- **Host Filesystem**: The directories (e.g., `/opt/stacks/<proxy-app>`) where your Compose files and local bind mounts live. DAM's discovery process relies entirely on this.
 - **Docker-Managed Resources**: Volumes, networks, images, and containers stored internally by the Docker Daemon. DAM operates on these indirectly through Docker Compose. When you delete an application directory from your filesystem, the Docker-managed resources are **not** automatically deleted unless you run a command like `dam delete <app>` first.
 
 ### Container Name vs Service Name vs Project Name
@@ -322,9 +323,9 @@ DAM abstracts this distinction, but understanding it is critical when using comm
 
 | Concept | What It Is | Example |
 | :------ | :--------- | :------ |
-| **Project Name** | The name of the entire application stack. Derived from the directory name. | `n8n` |
-| **Service Name** | A logical component of your project defined in `compose.yaml` under `services:`. | `n8n`, `postgres`, `redis` |
-| **Container Name** | The actual running instance of a service, named by Compose. | `n8n-n8n-1`, `n8n-postgres-1` |
+| **Project Name** | The name of the entire application stack. Derived from the directory name. | `<app-name>` |
+| **Service Name** | A logical component of your project defined in `compose.yaml` under `services:`. | `<app-name>`, `postgres`, `redis` |
+| **Container Name** | The actual running instance of a service, named by Compose. | `<app-name>-<app-name>-1`, `<app-name>-postgres-1` |
 
 When you use DAM, you always target the **Project Name**. You never need to target individual containers.
 

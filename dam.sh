@@ -34,7 +34,7 @@
 #   <action> homarr                          - Single specified app
 #   <action> n8n langflow traefik            - Multiple specified apps
 #
-# Optional: Append 'with vol', 'with net', etc. to run extended cleanup on update/delete.
+# Optional: Append 'with vol', 'with net', etc. to run extended cleanup on delete.
 # Example:  delete all except traefik with vol net
 #
 # Note: App names and paths must not contain spaces.
@@ -89,6 +89,7 @@ fi
 
 declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
 declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
+COMPOSE_FILENAMES=("compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml")
 MAX_SEARCH_DEPTH="${MAX_SEARCH_DEPTH:-5}"
 
 CMD_PREFIX="${CUSTOM_CMD_NAME:-}"
@@ -138,7 +139,7 @@ find_app_dir() {
         local found=()
         while IFS= read -r -d '' match; do
             local has_compose=false
-            for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+            for cf in "${COMPOSE_FILENAMES[@]}"; do
                 if [[ -f "$match/$cf" ]]; then
                     has_compose=true
                     break
@@ -249,9 +250,9 @@ is_excluded() {
 
 dc() {
     if docker compose version &>/dev/null; then
-        docker compose "$@"
+        docker compose ${DC_FILE_ARGS[@]+"${DC_FILE_ARGS[@]}"} "$@"
     elif docker-compose version &>/dev/null; then
-        docker-compose "$@"
+        docker-compose ${DC_FILE_ARGS[@]+"${DC_FILE_ARGS[@]}"} "$@"
     else
         echo -e "${RED}[ERROR]${NC} Neither 'docker compose' nor 'docker-compose' is available."
         return 1
@@ -280,7 +281,7 @@ docker_ready() {
 
 has_compose_files() {
     local dir="$1"
-    for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         [[ -f "$dir/$cf" ]] && return 0
     done
     return 1
@@ -288,7 +289,7 @@ has_compose_files() {
 
 get_app_compose_file() {
     local dir="$1"
-    for cf in "compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml"; do
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
         if [[ -f "$dir/$cf" ]]; then
             echo "$cf"
             return 0
@@ -310,6 +311,67 @@ has_update_files() {
         [[ -f "$f" ]] && return 0
     done
     return 1
+}
+
+resolve_compose_files() {
+    local dir="$1"
+    local folder="$2"
+    DC_FILE_ARGS=()
+    local found_any_custom=false
+    
+    if [[ ${#CUSTOM_COMPOSE_FILES_RAW[@]} -gt 0 ]]; then
+        local display_files=()
+        for cf in "${CUSTOM_COMPOSE_FILES_RAW[@]}"; do
+            local matched_file=""
+            if [[ -f "$dir/$cf" ]]; then
+                matched_file="$cf"
+            else
+                for ext in "" ".yaml" ".yml"; do
+                    if [[ -f "$dir/${cf}${ext}" ]]; then
+                        matched_file="${cf}${ext}"
+                        break
+                    elif [[ -f "$dir/compose.${cf}${ext}" ]]; then
+                        matched_file="compose.${cf}${ext}"
+                        break
+                    elif [[ -f "$dir/docker-compose.${cf}${ext}" ]]; then
+                        matched_file="docker-compose.${cf}${ext}"
+                        break
+                    fi
+                done
+            fi
+            
+            if [[ -n "$matched_file" ]]; then
+                DC_FILE_ARGS+=("-f" "$matched_file")
+                display_files+=("$matched_file")
+                found_any_custom=true
+                GLOBAL_USED_COMPOSE_FILES["$cf"]=1
+            else
+                echo -e "${YELLOW}  [WARN]${NC} Requested file '${cf}' not found for this app. Ignoring."
+                GLOBAL_MISSING_COMPOSE_FILES["$cf"]+="${folder} "
+            fi
+        done
+        
+        if $found_any_custom; then
+            echo -e "${CYAN}  [INFO]${NC} Compose files detected: ${display_files[*]}"
+            return 0
+        else
+            echo -e "${CYAN}  [INFO]${NC} None of the requested files were found. Falling back to default."
+        fi
+    fi
+
+    local canon_file=""
+    for cf in "${COMPOSE_FILENAMES[@]}"; do
+        if [[ -f "$dir/$cf" ]]; then
+            canon_file="$cf"
+            break
+        fi
+    done
+    if [[ -z "$canon_file" ]]; then
+        echo -e "${RED}  [ERROR]${NC} No valid compose file (${COMPOSE_FILENAMES[*]}) found in '${folder}'."
+        return 1
+    fi
+    echo -e "${CYAN}  [INFO]${NC} Compose file detected: ${canon_file}"
+    return 0
 }
 
 print_apps_in_columns() {
@@ -466,6 +528,19 @@ inventory_apps_table() {
 
 print_app_level_details_table() {
     local apps=("$@")
+    
+    declare -A app_status
+    if docker info >/dev/null 2>&1; then
+        while IFS='|' read -r project state; do
+            [[ -z "$project" ]] && continue
+            if [[ "$state" == "running" ]]; then
+                app_status["$project"]="running"
+            elif [[ -z "${app_status["$project"]:-}" ]]; then
+                app_status["$project"]="stopped"
+            fi
+        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}' 2>/dev/null)
+    fi
+
     (
         echo "APP|PATH|COMPOSE FILE|OVERALL STATE"
         for app in "${apps[@]}"; do
@@ -480,13 +555,10 @@ print_app_level_details_table() {
             cfile="$(get_app_compose_file "$dir")"
             
             state="inactive"
-            if docker ps -q --filter "label=com.docker.compose.project=$app" --filter "status=running" | grep -q .; then
-                state="running"
-            elif docker ps -q --filter "label=com.docker.compose.project=$app" | grep -q .; then
-                state="stopped"
-            fi
             if is_excluded "$app"; then
                 state="excluded"
+            elif [[ -n "${app_status["$app"]:-}" ]]; then
+                state="${app_status["$app"]}"
             fi
             echo "$app|$display_path|$cfile|$state"
         done
@@ -526,18 +598,18 @@ get_all_apps() {
 
 usage() {
     echo -e "${BOLD}Usage:${NC}"
-    echo -e "  ${P_CMD}<action> all                             - All apps"
-    echo -e "  ${P_CMD}<action> all except <name> [name ...]    - All apps except specified apps"
-    echo -e "  ${P_CMD}<action> <name> [name ...]               - One or more specific apps"
-    echo -e "  ${P_CMD}list [all|name...]                       - Detailed list of apps"
-    echo -e "  ${P_CMD}get [app] [resource]                     - Get specific raw data (cid, iid, vol, mnt, net, port, state)"
-    echo -e "  ${P_CMD}cleanup [net|buildx|vol|img|all] [-y]    - Clean dangling resources"
+    echo -e "  ${P_CMD}<action> all [using files...]                           - All apps"
+    echo -e "  ${P_CMD}<action> all except <name> [name ...] [using files...]  - All apps except specified apps"
+    echo -e "  ${P_CMD}<action> <name> [name ...] [using files...]             - One or more specific apps"
+    echo -e "  ${P_CMD}list [all|name...]                                      - Detailed list of apps"
+    echo -e "  ${P_CMD}get [app] [resource]                                    - Get specific raw data (cid, iid, vol, mnt, net, port, state)"
+    echo -e "  ${P_CMD}cleanup [net|buildx|vol|img|all] [-y]                   - Clean dangling resources"
     echo
     echo -e "${BOLD}Examples:${NC}"
-    echo -e "  ${P_CMD}start all except traefik"
-    echo -e "  ${P_CMD}restart homarr n8n"
-    echo -e "  ${P_CMD}update n8n langflow traefik"
-    echo -e "  ${P_CMD}delete affine"
+    echo -e "  ${P_CMD}start all except <app-name>"
+    echo -e "  ${P_CMD}restart <app1> <app2>"
+    echo -e "  ${P_CMD}update <app1> <app2> <app3>"
+    echo -e "  ${P_CMD}delete <app-name>"
     echo -e "  ${P_CMD}cleanup vol"
     echo -e "  ${P_CMD}cleanup"
     echo
@@ -756,19 +828,9 @@ run_compose_action_for_app() {
     local dir
     dir="$(find_app_dir "$folder")"
 
-    local canon_file=""
-    for cf in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
-        if [[ -f "$dir/$cf" ]]; then
-            canon_file="$cf"
-            break
-        fi
-    done
-    if [[ -z "$canon_file" ]]; then
-        echo -e "${RED}  [ERROR]${NC} No compose.yaml or docker-compose.yml found in '${folder}'."
+    if ! resolve_compose_files "$dir" "$folder"; then
         return 1
     fi
-
-    echo -e "${CYAN}  [INFO]${NC} Compose file detected: ${canon_file}"
 
     pushd "$dir" > /dev/null || return 1
 
@@ -921,32 +983,19 @@ run_update_action_for_app() {
         fi
     fi
 
-    local canon_file=""
-    for cf in compose.yaml compose.yml docker-compose.yaml docker-compose.yml; do
-        if [[ -f "$dir/$cf" ]]; then
-            canon_file="$cf"
-            break
-        fi
-    done
-    if [[ -z "$canon_file" ]]; then
-        echo -e "${RED}  [ERROR]${NC} No compose.yaml or docker-compose.yml found in '${folder}'."
+    if ! resolve_compose_files "$dir" "$folder"; then
         return 1
     fi
-
-    echo -e "${CYAN}  [INFO]${NC} Compose file detected: ${canon_file}"
     
     pushd "$dir" > /dev/null || return 1
 
-    local running_containers
-    running_containers="$(dc ps -q 2>/dev/null || true)"
+    local running_containers=()
+    mapfile -t running_containers < <(dc ps -q 2>/dev/null || true)
     local was_running=false
-    if [[ -n "$running_containers" ]]; then
-        for cid in $running_containers; do
-            if [[ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null)" == "true" ]]; then
-                was_running=true
-                break
-            fi
-        done
+    if [[ ${#running_containers[@]} -gt 0 ]]; then
+        if docker inspect -f '{{.State.Running}}' "${running_containers[@]}" 2>/dev/null | grep -q "true"; then
+            was_running=true
+        fi
     fi
     if ! $was_running; then
         echo -e "${CYAN}  [INFO]${NC} App currently has no running containers. It will be left stopped."
@@ -1005,6 +1054,10 @@ run_logs_action_for_app() {
     dir="$(find_app_dir "$folder")"
     
     if [[ ! -d "$dir" ]]; then
+        return 1
+    fi
+
+    if ! resolve_compose_files "$dir" "$folder"; then
         return 1
     fi
 
@@ -1170,8 +1223,10 @@ parse_target_apps() {
     local skip_prompt=false
     local requested=()
     local parsing_with=false
+    local parsing_using=false
     CLEANUP_MODES=()
     LOG_ARGS_RAW=()
+    CUSTOM_COMPOSE_FILES_RAW=()
     GET_RESOURCE_RAW=""
     GET_FULL_SHA=false
     ASSUME_YES=false
@@ -1180,12 +1235,18 @@ parse_target_apps() {
         if [[ "$arg" == "-y" || "$arg" == "--yes" ]]; then
             skip_prompt=true
             ASSUME_YES=true
+        elif [[ "$arg" == "using" ]]; then
+            parsing_using=true
+            parsing_with=false
         elif [[ "$arg" == "with" ]]; then
             if [[ "$action" != "delete" ]]; then
                 echo -e "${RED}[ERROR]${NC} The 'with' modifier is only supported for the 'delete' command."
                 return 1
             fi
             parsing_with=true
+            parsing_using=false
+        elif $parsing_using; then
+            CUSTOM_COMPOSE_FILES_RAW+=("$arg")
         elif $parsing_with; then
             if [[ "$arg" == "vol" || "$arg" == "net" || "$arg" == "buildx" || "$arg" == "img" || "$arg" == "all" ]]; then
                 CLEANUP_MODES+=("$arg")
@@ -1368,7 +1429,11 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         fi
         echo -e "${YELLOW}Fetching latest version from: ${UPDATE_URL}${NC}"
         
+        # Enforce strict permissions for the temporary file to prevent local tampering
+        old_umask=$(umask)
+        umask 077
         tmp_script="$(mktemp /tmp/docker-app-manager-XXXXXX.tmp)"
+        umask "$old_umask"
         if curl -fsSLo "$tmp_script" "$UPDATE_URL"; then
             if ! head -n 1 "$tmp_script" | grep -q "^#!"; then
                 echo -e "${RED}[ERROR]${NC} Downloaded file does not appear to be a valid script. Update aborted."
@@ -1630,7 +1695,11 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         echo -e "\n${YELLOW}Saving configuration to $CONF_PATH...${NC}"
         
         format_array() {
-            for item in $1; do printf '"%s" ' "$item"; done
+            local arr
+            read -ra arr <<< "$1"
+            for item in "${arr[@]}"; do 
+                printf '"%s" ' "$item"
+            done
         }
         
         if [[ -f "$CONF_PATH" ]]; then
@@ -1990,9 +2059,21 @@ case "$ACTION" in
                 docker stats --no-stream "${all_containers[@]}" || true
             fi
         else
+            declare -A GLOBAL_USED_COMPOSE_FILES=()
+            declare -A GLOBAL_MISSING_COMPOSE_FILES=()
             for app in "${APPS_TO_PROCESS[@]}"; do
                 process_app "$ACTION" "$app" || true
             done
+            if [[ ${#CUSTOM_COMPOSE_FILES_RAW[@]} -gt 0 ]]; then
+                for cf in "${CUSTOM_COMPOSE_FILES_RAW[@]}"; do
+                    if [[ -z "${GLOBAL_USED_COMPOSE_FILES[$cf]:-}" ]]; then
+                        echo -e "${YELLOW}[WARN]${NC} The requested file '${cf}' was not found in any processed app."
+                    elif [[ -n "${GLOBAL_MISSING_COMPOSE_FILES[$cf]:-}" ]]; then
+                        missing_apps="${GLOBAL_MISSING_COMPOSE_FILES[$cf]}"
+                        echo -e "${YELLOW}[WARN]${NC} The requested file '${cf}' was missing in the following apps: ${missing_apps% }"
+                    fi
+                done
+            fi
         fi
 
         print_summary "$ACTION"

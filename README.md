@@ -87,18 +87,18 @@
 Instead of:
 
 ```bash
-cd ~/stacks/homarr && docker compose up -d
-cd ~/stacks/n8n && docker compose pull && docker compose up -d
-cd ~/stacks/traefik && docker compose restart
+cd ~/stacks/<app2> && docker compose up -d
+cd ~/stacks/<app-name> && docker compose pull && docker compose up -d
+cd ~/stacks/<proxy-app> && docker compose restart
 # …and so on for every app
 ```
 
 you can do:
 
 ```bash
-start all except traefik
-update n8n langflow
-restart homarr
+start all except <proxy-app>
+update <app-name> <app-name-2>
+restart <app2>
 cleanup vol
 ```
 
@@ -115,7 +115,7 @@ DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compo
 | Problem | DAM solution |
 | :------ | :----------- |
 | Constantly `cd` into stack directories | Run commands from anywhere by app name |
-| Updating 10+ apps one by one | `update all` or `update all except traefik` |
+| Updating 10+ apps one by one | `update all` or `update all except <proxy-app>` |
 | Forgetting which apps exist | Built-in listing + real-time status |
 | Accidental volume/network deletes | Explicit confirmations + opt-in cleanup modes |
 | Different compose file names | Auto-detects `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` |
@@ -189,8 +189,8 @@ After installation you can use the commands from anywhere.
 You can run the script without installing:
 
 ```bash
-./dam.sh start homarr
-./dam.sh update all except traefik
+./dam.sh start <app2>
+./dam.sh update all except <proxy-app>
 ./dam.sh cleanup
 ```
 
@@ -225,32 +225,36 @@ The same selection syntax works for almost every action:
 
 | Pattern | Meaning |
 | :------ | :------ |
-| `<action> all` | Every discovered app |
-| `<action> all except app1 app2` | Every app except the listed ones |
-| `<action> app1` | Single app |
-| `<action> app1 app2 app3` | Multiple specific apps |
+| `<action> all [using files...]` | Every discovered app |
+| `<action> all except app1 app2 [using files...]` | Every app except the listed ones |
+| `<action> app1 [using files...]` | Single app |
+| `<action> app1 app2 app3 [using files...]` | Multiple specific apps |
 
 Optional modifiers:
 
-- Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** / **update** to trigger extended cleanup.
+- Append `using <file1> <file2>...` to explicitly specify which Compose files to use (e.g. `using compose.yaml compose.override.yaml`). It automatically resolves shorthand names (e.g., `dev` to `dev.yaml` or `compose.dev.yaml`).
+- Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** to trigger extended cleanup.
 - Use `-y` or `--yes` to skip confirmation prompts (especially important for `delete all` and volume/image prunes).
 
-**Note:** App names and paths must **not** contain spaces. App names are derived from the directory name. So if you have a folder named `n8n`, the app name will be `n8n`. If you have a folder named `n8n-old`, the app name will be `n8n-old`.
+**Note:** App names and paths must **not** contain spaces. App names are derived from the directory name. So if you have a folder named `<app-name>`, the app name will be `<app-name>`. If you have a folder named `<app-name>-old`, the app name will be `<app-name>-old`.
 
 ### Everyday Examples
 
 ```bash
 # Start everything except the reverse proxy
-start all except traefik
+start all except <proxy-app>
 
 # Restart a couple of apps
-restart homarr n8n
+restart <app2> <app-name>
 
 # Pull latest images and recreate
-update n8n langflow traefik
+update <app-name> <app-name-2> <proxy-app>
+
+# Start an app using specific compose files (resolves 'dev' to 'dev.yaml' or 'compose.dev.yaml', etc.)
+start <app-name> using compose dev prod
 
 # Full recreate of one stack
-recreate affine
+recreate <app4>
 
 # Force recreate (immediate kill + --force-recreate)
 force-recreate portainer
@@ -258,25 +262,25 @@ force-recreate portainer
 frec portainer
 
 # Remove an app stack (containers + networks); volumes kept by default
-delete affine
+delete <app4>
 
 # Remove an app and also prune its volumes
-delete affine with vol
+delete <app4> with vol
 
 # View logs for an app (last 100 lines)
-dkr logs n8n last 100
+dkr logs <app-name> last 100
 
 # Stream logs live with timestamps
-dkr logs n8n live time
+dkr logs <app-name> live time
 
 # View the first 50 lines of logs
-dkr logs n8n first 50
+dkr logs <app-name> first 50
 
 # Get raw container IDs for scripting
-dkr get n8n cid
+dkr get <app-name> cid
 
 # Get container info for a specific service
-dkr get n8n:postgres vol
+dkr get <app-name>:postgres vol
 
 # Clean only dangling images
 cleanup
@@ -289,7 +293,7 @@ cleanup all -y
 
 # See what is running
 status all
-status n8n traefik
+status <app-name> <proxy-app>
 ```
 
 ---
@@ -377,7 +381,7 @@ Human-friendly keyword syntax:
 | `live` / `follow` | Stream logs in real-time |
 | `time` / `timestamps` | Prefix every line with a timestamp |
 
-Keywords can be chained: `logs n8n live last 10 time`
+Keywords can be chained: `logs <app-name> live last 10 time`
 
 > **Note:** `live` cannot be used with `all` apps (safety restriction).
 
@@ -522,7 +526,7 @@ Uses the built-in default search paths, so you must specify your stacks path dir
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-dkr update all except traefik
+dkr update all except <proxy-app>
 dkr cleanup -y
 ```
 

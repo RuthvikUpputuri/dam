@@ -28,7 +28,7 @@ DAM locates the application directory using its discovery engine (`find_app_dir`
 ### Step 2: Unpause Containers (1/2)
 DAM changes into the application directory and runs:
 ```bash
-docker compose unpause
+docker compose [-f <file>...] unpause
 ```
 - If the app's containers are currently paused, Docker resumes their processes via cgroups freezing logic.
 - If the app's containers are already running (not paused), Docker gracefully handles it by doing nothing and returning success.

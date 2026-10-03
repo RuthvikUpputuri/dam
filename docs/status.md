@@ -85,14 +85,14 @@ docker stats --no-stream <cid1> <cid2> ...
 
 ```bash
 # View status for a single app
-dkr status n8n
+dkr status <app-name>
 
 # View aggregated status for multiple apps
-dkr status n8n langflow traefik
+dkr status <app-name> <app-name-2> <proxy-app>
 
 # View status for all available apps
 dkr status all
 
 # View status for all apps except the reverse proxy
-dkr status all except traefik
+dkr status all except <proxy-app>
 ```
