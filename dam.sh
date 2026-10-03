@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-#VERSION="1.1.0"
+#VERSION="1.2.0"
 #
 # =============================================================================
 # @title        Docker App Manager (DAM)
