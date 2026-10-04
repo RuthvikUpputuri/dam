@@ -101,7 +101,7 @@ fi
 
 FIND_PRUNE_ARGS=()
 for excl in "${EXCLUDE_DIRS[@]}"; do
-    FIND_PRUNE_ARGS+=( -iname "$excl" -prune -o )
+    FIND_PRUNE_ARGS+=( -name "$excl" -prune -o )
 done
 
 declare -gA APP_DIR_CACHE
@@ -110,6 +110,8 @@ declare -g APP_DIR_CACHE_BUILT=false
 
 build_app_dir_cache() {
     local valid_search_dirs=()
+    declare -gA APP_DIR_PRIMARY=()
+    local valid_matches=()
     for d in "${SEARCH_DIRS[@]}"; do
         [[ -d "$d" ]] && valid_search_dirs+=("$d")
     done
@@ -117,7 +119,7 @@ build_app_dir_cache() {
 
     local LIST_PRUNE_ARGS=()
     for excl in "${EXCLUDE_DIRS[@]}"; do
-        LIST_PRUNE_ARGS+=( -iname "$excl" -prune -print0 -o )
+        LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
     done
 
     while IFS= read -r -d '' match; do
@@ -138,28 +140,49 @@ build_app_dir_cache() {
         fi
         
         if $has_compose; then
-            local effective_name
-            effective_name="$(get_effective_app_name "$match")"
+            valid_matches+=("$match")
             local folder_name
             folder_name="$(basename "$match")"
             
-            # Map both effective name and folder name to the directory
-            for key in "$effective_name" "$folder_name"; do
-                # Prevent mapping the same directory to the same key twice (e.g. if effective_name == folder_name)
-                local existing="${APP_DIR_CACHE["$key"]:-}"
-                if [[ -z "$existing" ]]; then
-                    APP_DIR_CACHE["$key"]="$match"
-                elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
-                    # It's a duplicate only if it maps to a DIFFERENT directory
-                    if [[ "$existing" == "DUPLICATE:"* ]]; then
-                        APP_DIR_CACHE["$key"]="${existing}|${match}"
-                    else
-                        APP_DIR_CACHE["$key"]="DUPLICATE:${existing}|${match}"
-                    fi
+            local existing="${APP_DIR_CACHE["$folder_name"]:-}"
+            if [[ -z "$existing" ]]; then
+                APP_DIR_CACHE["$folder_name"]="$match"
+                APP_DIR_PRIMARY["$folder_name"]=true
+            elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
+                if [[ "$existing" == "DUPLICATE:"* ]]; then
+                    APP_DIR_CACHE["$folder_name"]="${existing}|${match}"
+                else
+                    APP_DIR_CACHE["$folder_name"]="DUPLICATE:${existing}|${match}"
                 fi
-            done
+                APP_DIR_PRIMARY["$folder_name"]=true
+            fi
         fi
     done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
+    
+    # Pass 2: map effective names as secondary aliases
+    for match in "${valid_matches[@]}"; do
+        local effective_name
+        effective_name="$(get_effective_app_name "$match")"
+        
+        # Don't map it if the effective name is exactly the folder name (already mapped in pass 1)
+        [[ "$effective_name" == "$(basename "$match")" ]] && continue
+        
+        local existing="${APP_DIR_CACHE["$effective_name"]:-}"
+        if [[ -z "$existing" ]]; then
+            APP_DIR_CACHE["$effective_name"]="$match"
+        elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
+            # Conflict. Let primary folder names win.
+            if [[ "${APP_DIR_PRIMARY["$effective_name"]:-false}" == "true" ]]; then
+                continue
+            else
+                if [[ "$existing" == "DUPLICATE:"* ]]; then
+                    APP_DIR_CACHE["$effective_name"]="${existing}|${match}"
+                else
+                    APP_DIR_CACHE["$effective_name"]="DUPLICATE:${existing}|${match}"
+                fi
+            fi
+        fi
+    done
     
     APP_DIR_CACHE_BUILT=true
 }
@@ -187,9 +210,10 @@ find_app_dir() {
                 # If the key itself is a duplicate, we need to extract all its dirs
                 if [[ "$mapped_dir" == "DUPLICATE:"* ]]; then
                     local dupes="${mapped_dir#DUPLICATE:}"
-                    while IFS='|' read -r match; do
+                    IFS='|' read -ra dupe_array <<< "$dupes"
+                    for match in "${dupe_array[@]}"; do
                         [[ -n "$match" ]] && ci_matches+=("$match")
-                    done <<< "$dupes"
+                    done
                 else
                     ci_matches+=("$mapped_dir")
                 fi
@@ -227,9 +251,10 @@ find_app_dir() {
     if [[ "$cached_result" == "DUPLICATE:"* ]]; then
         echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
         local matches="${cached_result#DUPLICATE:}"
-        while IFS='|' read -r match; do
+        IFS='|' read -ra match_array <<< "$matches"
+        for match in "${match_array[@]}"; do
             [[ -n "$match" ]] && echo -e "  - ${match}" >&2
-        done <<< "$matches"
+        done
         FOUND_APP_DIR="DUPLICATE:$matches"
         return 1
     elif [[ "$cached_result" == "NOT_FOUND" ]]; then
@@ -304,10 +329,10 @@ print_summary() {
 }
 
 is_excluded() {
-    local folder="${1,,}"
+    local folder="$1"
     local excl
     for excl in "${EXCLUDE_DIRS[@]}"; do
-        [[ "$folder" == "${excl,,}" ]] && return 0
+        [[ "$folder" == "$excl" ]] && return 0
     done
     return 1
 }
@@ -526,7 +551,7 @@ list_available_apps() {
     for sdir in "${valid_search_dirs[@]}"; do
         local LIST_PRUNE_ARGS=()
         for excl in "${EXCLUDE_DIRS[@]}"; do
-            LIST_PRUNE_ARGS+=( -iname "$excl" -prune -print0 -o )
+            LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
         done
 
         local apps=()
@@ -607,7 +632,7 @@ inventory_apps_table() {
         for sdir in "${valid_search_dirs[@]}"; do
             local LIST_PRUNE_ARGS=()
             for excl in "${EXCLUDE_DIRS[@]}"; do
-                LIST_PRUNE_ARGS+=( -iname "$excl" -prune -print0 -o )
+                LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
             done
 
             while IFS= read -r -d '' d; do
@@ -2066,6 +2091,12 @@ case "$ACTION" in
                 target_service="${raw_app#*:}"
                 [[ "$target_service" == "$raw_app" ]] && target_service=""
                 
+                find_app_dir "$app_name"
+                dir="$FOUND_APP_DIR"
+                if [[ -d "$dir" ]]; then
+                    app_name="$(get_effective_app_name "$dir")"
+                fi
+                
                 filter_args=("-f" "label=com.docker.compose.project=$app_name")
                 if [[ -n "$target_service" ]]; then
                     filter_args+=("-f" "label=com.docker.compose.service=$target_service")
@@ -2126,29 +2157,34 @@ case "$ACTION" in
             echo -e "${CYAN}Gathering status for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
             all_containers=()
             
-            declare -A target_apps
+            declare -A target_eff_names
+            declare -A resolved_dirs
             for app in "${APPS_TO_PROCESS[@]}"; do
-                target_apps["$app"]=1
                 (( TOTAL++ )) || true
+                find_app_dir "$app"
+                dir="$FOUND_APP_DIR"
+                if [[ -d "$dir" ]]; then
+                    eff_name="$(get_effective_app_name "$dir")"
+                    target_eff_names["$eff_name"]="$app"
+                    resolved_dirs["$app"]="$dir"
+                elif [[ "$dir" == "DUPLICATE:"* ]]; then
+                    resolved_dirs["$app"]="DUPLICATE"
+                fi
             done
             
-            declare -A found_dirs
             while IFS='|' read -r cid project wdir; do
                 [[ -z "$cid" ]] && continue
                 app_name=""
-                if [[ -n "$project" ]] && [[ -n "${target_apps["$project"]:-}" ]]; then
+                if [[ -n "$project" ]] && [[ -n "${target_eff_names["$project"]:-}" ]]; then
                     app_name="$project"
                 elif [[ -n "$wdir" ]]; then
                     bname=$(get_effective_app_name "$wdir")
-                    if [[ -n "${target_apps["$bname"]:-}" ]]; then
+                    if [[ -n "${target_eff_names["$bname"]:-}" ]]; then
                         app_name="$bname"
                     fi
                 fi
                 if [[ -n "$app_name" ]]; then
                     all_containers+=("$cid")
-                    if [[ -n "$wdir" && -z "${found_dirs["$app_name"]:-}" ]]; then
-                        found_dirs["$app_name"]="$wdir"
-                    fi
                 fi
             done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.ID}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
             
@@ -2159,11 +2195,7 @@ case "$ACTION" in
                     continue
                 fi
                 
-                dir="${found_dirs["$app"]:-}"
-                if [[ -z "$dir" ]]; then
-                    find_app_dir "$app"
-                    dir="$FOUND_APP_DIR"
-                fi
+                dir="${resolved_dirs["$app"]:-}"
                 
                 if [[ "$dir" == "DUPLICATE" ]]; then
                     echo -e "${RED}  [ERROR]${NC} Multiple matching apps found for '${app}'"
