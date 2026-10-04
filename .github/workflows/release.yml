@@ -38,9 +38,9 @@ jobs:
           
           echo "Bumping from $CURRENT_VERSION to $NEW_VERSION"
           
-          # Update the version across all files dynamically (excluding this workflow file)
-          # This finds any file containing the current version and replaces it with the new version!
-          git grep -l "$CURRENT_VERSION" | grep -v "\.github/workflows" | xargs -r sed -i "s/$CURRENT_VERSION/$NEW_VERSION/g"
+          # Update the version safely in specific files
+          CURRENT_VERSION_ESCAPED="${CURRENT_VERSION//./\\.}"
+          sed -i "s/${CURRENT_VERSION_ESCAPED}/${NEW_VERSION}/g" dam.sh README.md
           
           # Export to next steps
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV

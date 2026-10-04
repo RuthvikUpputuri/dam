@@ -208,7 +208,10 @@ If `UPDATE_SHA256` is not set (the default), self-update performs only basic val
 
 3. **`get_app_compose_file` with update-only apps**: If a directory has no Compose file but has an `update*.sh` script, `get_app_compose_file()` returns the basename of the update script. This is used in the `list` output where it may appear confusing (showing a `.sh` file in the "COMPOSE" column).
 
-4. **App name matching is case-sensitive**: `dkr start N8n` will not match a directory named `n8n`.
+4. **App Name Casing and Collisions**: DAM uses a hybrid approach to find your apps. It looks for an **exact case match** first, and if that fails, it falls back to **case-insensitive matching**. This affects directories with similar names (e.g., you have both `n8n` and `N8n` folders):
+   - **Docker's rule**: Docker Compose strictly lowercases all project names. If you have an `n8n` folder and an `N8n` folder, Docker Compose thinks they are the *exact same project* (`n8n`). If you try to run both, Docker will destroy one stack to deploy the other!
+   - **The solution**: You *can* have both folders, but you **must** set a custom project name for one of them (e.g., adding `name: n8n-prod` inside the `N8n` folder's compose file).
+   - **How DAM handles it**: Because DAM checks exact matches first, if you type `dkr start N8n`, DAM instantly finds the `N8n` folder (where you set the custom name). If you type `dkr start n8n`, DAM finds the `n8n` folder. If you make a typo and type `dkr start n8N`, exact match fails, so DAM tries case-insensitive matching. Since it matches *both* folders, DAM safely reports an ambiguity error rather than guessing which one you meant. On the other hand, if you only have one folder `n8n` and type `dkr start N8N`, the case-insensitive fallback finds exactly one match and safely starts it!
 
 5. **Concurrent DAM invocations**: Running multiple DAM instances simultaneously for the same apps could cause conflicts. There is no locking mechanism.
 

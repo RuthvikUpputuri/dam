@@ -106,6 +106,64 @@ done
 
 declare -gA APP_DIR_CACHE
 
+declare -g APP_DIR_CACHE_BUILT=false
+
+build_app_dir_cache() {
+    local valid_search_dirs=()
+    for d in "${SEARCH_DIRS[@]}"; do
+        [[ -d "$d" ]] && valid_search_dirs+=("$d")
+    done
+    [[ ${#valid_search_dirs[@]} -eq 0 ]] && return 0
+
+    local LIST_PRUNE_ARGS=()
+    for excl in "${EXCLUDE_DIRS[@]}"; do
+        LIST_PRUNE_ARGS+=( -iname "$excl" -prune -print0 -o )
+    done
+
+    while IFS= read -r -d '' match; do
+        local has_compose=false
+        for cf in "${COMPOSE_FILENAMES[@]}"; do
+            if [[ -f "$match/$cf" ]]; then
+                has_compose=true
+                break
+            fi
+        done
+        if ! $has_compose; then
+            for f in "$match"/update*.sh; do
+                if [[ -f "$f" ]]; then
+                    has_compose=true
+                    break
+                fi
+            done
+        fi
+        
+        if $has_compose; then
+            local effective_name
+            effective_name="$(get_effective_app_name "$match")"
+            local folder_name
+            folder_name="$(basename "$match")"
+            
+            # Map both effective name and folder name to the directory
+            for key in "$effective_name" "$folder_name"; do
+                # Prevent mapping the same directory to the same key twice (e.g. if effective_name == folder_name)
+                local existing="${APP_DIR_CACHE["$key"]:-}"
+                if [[ -z "$existing" ]]; then
+                    APP_DIR_CACHE["$key"]="$match"
+                elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
+                    # It's a duplicate only if it maps to a DIFFERENT directory
+                    if [[ "$existing" == "DUPLICATE:"* ]]; then
+                        APP_DIR_CACHE["$key"]="${existing}|${match}"
+                    else
+                        APP_DIR_CACHE["$key"]="DUPLICATE:${existing}|${match}"
+                    fi
+                fi
+            done
+        fi
+    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
+    
+    APP_DIR_CACHE_BUILT=true
+}
+
 find_app_dir() {
     local target="$1"
     if [[ "$target" =~ [[:space:]] ]]; then
@@ -113,75 +171,73 @@ find_app_dir() {
         return 1
     fi
     
-    if [[ -n "${APP_DIR_CACHE["$target"]:-}" ]]; then
-        local cached_result="${APP_DIR_CACHE["$target"]}"
-        if [[ "$cached_result" == "DUPLICATE:"* ]]; then
-            echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
-            local matches="${cached_result#DUPLICATE:}"
-            while IFS='|' read -r match; do
-                [[ -n "$match" ]] && echo -e "  - ${match}" >&2
-            done <<< "$matches"
-            return 1
-        elif [[ "$cached_result" == "NOT_FOUND" ]]; then
-            FOUND_APP_DIR=""
-            return 0
-        else
-            FOUND_APP_DIR="$cached_result"
-            return 0
-        fi
+    if [[ "${APP_DIR_CACHE_BUILT:-false}" != "true" ]]; then
+        build_app_dir_cache
     fi
-    FOUND_APP_DIR=""
-
-    local valid_search_dirs=()
-    for d in "${SEARCH_DIRS[@]}"; do
-        [[ -d "$d" ]] && valid_search_dirs+=("$d")
-    done
     
-    if [[ ${#valid_search_dirs[@]} -gt 0 ]]; then
-        local found=()
-        while IFS= read -r -d '' match; do
-            local has_compose=false
-            for cf in "${COMPOSE_FILENAMES[@]}"; do
-                if [[ -f "$match/$cf" ]]; then
-                    has_compose=true
-                    break
+    local cached_result="${APP_DIR_CACHE["$target"]:-NOT_FOUND}"
+    
+    # Fallback to case-insensitive search if exact match fails
+    if [[ "$cached_result" == "NOT_FOUND" ]]; then
+        local target_lower="${target,,}"
+        local ci_matches=()
+        for key in "${!APP_DIR_CACHE[@]}"; do
+            if [[ "${key,,}" == "$target_lower" ]]; then
+                local mapped_dir="${APP_DIR_CACHE["$key"]}"
+                # If the key itself is a duplicate, we need to extract all its dirs
+                if [[ "$mapped_dir" == "DUPLICATE:"* ]]; then
+                    local dupes="${mapped_dir#DUPLICATE:}"
+                    while IFS='|' read -r match; do
+                        [[ -n "$match" ]] && ci_matches+=("$match")
+                    done <<< "$dupes"
+                else
+                    ci_matches+=("$mapped_dir")
                 fi
-            done
-            if ! $has_compose; then
-                for f in "$match"/update*.sh; do
-                    if [[ -f "$f" ]]; then
-                        has_compose=true
+            fi
+        done
+        
+        # Deduplicate ci_matches
+        if [[ ${#ci_matches[@]} -gt 0 ]]; then
+            local unique_matches=()
+            for m in "${ci_matches[@]}"; do
+                local found_unique=false
+                for u in "${unique_matches[@]}"; do
+                    if [[ "$m" == "$u" ]]; then
+                        found_unique=true
                         break
                     fi
                 done
-            fi
-            if $has_compose; then
-                local effective_name
-                effective_name="$(get_effective_app_name "$match")"
-                if [[ "$effective_name" == "$target" ]]; then
-                    found+=("$match")
+                if ! $found_unique; then
+                    unique_matches+=("$m")
                 fi
-            fi
-        done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
-        
-        if [[ ${#found[@]} -eq 1 ]]; then
-            APP_DIR_CACHE["$target"]="${found[0]}"
-            FOUND_APP_DIR="${found[0]}"
-        elif [[ ${#found[@]} -gt 1 ]]; then
-            local matches_str=""
-            echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
-            for match in "${found[@]}"; do
-                matches_str+="${match}|"
-                echo -e "  - ${match}" >&2
             done
-            APP_DIR_CACHE["$target"]="DUPLICATE:${matches_str}"
-            return 1
-        else
-            APP_DIR_CACHE["$target"]="NOT_FOUND"
-            FOUND_APP_DIR=""
+            
+            if [[ ${#unique_matches[@]} -eq 1 ]]; then
+                cached_result="${unique_matches[0]}"
+            elif [[ ${#unique_matches[@]} -gt 1 ]]; then
+                local matches_str=""
+                for m in "${unique_matches[@]}"; do
+                    matches_str+="${m}|"
+                done
+                cached_result="DUPLICATE:${matches_str}"
+            fi
         fi
+    fi
+    
+    if [[ "$cached_result" == "DUPLICATE:"* ]]; then
+        echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
+        local matches="${cached_result#DUPLICATE:}"
+        while IFS='|' read -r match; do
+            [[ -n "$match" ]] && echo -e "  - ${match}" >&2
+        done <<< "$matches"
+        FOUND_APP_DIR="DUPLICATE:$matches"
+        return 1
+    elif [[ "$cached_result" == "NOT_FOUND" ]]; then
+        FOUND_APP_DIR=""
+        return 0
     else
-        APP_DIR_CACHE["$target"]="NOT_FOUND"
+        FOUND_APP_DIR="$cached_result"
+        return 0
     fi
 }
 
@@ -470,7 +526,7 @@ list_available_apps() {
     for sdir in "${valid_search_dirs[@]}"; do
         local LIST_PRUNE_ARGS=()
         for excl in "${EXCLUDE_DIRS[@]}"; do
-            LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
+            LIST_PRUNE_ARGS+=( -iname "$excl" -prune -print0 -o )
         done
 
         local apps=()
@@ -996,8 +1052,8 @@ run_update_action_for_app() {
     local dir
     local rc
     find_app_dir "$folder"
-    dir="$FOUND_APP_DIR"
     rc=$?
+    dir="$FOUND_APP_DIR"
 
     if [[ $rc -ne 0 ]]; then
         return 1
@@ -1206,8 +1262,8 @@ process_app() {
     local dir
     local rc
     find_app_dir "$folder"
-    dir="$FOUND_APP_DIR"
     rc=$?
+    dir="$FOUND_APP_DIR"
 
     (( TOTAL++ )) || true
     print_section "$action" "$folder"
@@ -1330,7 +1386,13 @@ parse_target_apps() {
                     continue
                 fi
             fi
-            requested+=("${arg,,}")
+            if [[ "$arg" == *":"* ]]; then
+                local app_part="${arg%%:*}"
+                local svc_part="${arg#*:}"
+                requested+=("${app_part}:${svc_part}")
+            else
+                requested+=("${arg}")
+            fi
         fi
     done
     
