@@ -5,7 +5,7 @@
 ## Syntax
 
 ```bash
-<cmd> delete <app-selection> [-y|--yes] [with <modes...>]
+<cmd> delete <app-selection> [using <file>...] [-y|--yes] [with <modes...>]
 ```
 
 Valid modes after `with` are `vol`, `img`, `net`, `buildx`, and `all`.
@@ -38,6 +38,10 @@ docker compose [-f <file>...] down --remove-orphans
 ```
 
 `--remove-orphans` removes containers from services no longer defined by the current Compose file. DAM then displays `docker compose ps`; status-display failure is ignored after a successful `down`.
+
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` before the optional `with` clause to select Compose files explicitly. If none of the requested files resolve for an app, `delete` fails that app instead of removing the stack described by its default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
 
 | `with` mode | Additional Compose arguments | Effect |
 | :-- | :-- | :-- |
@@ -86,4 +90,3 @@ dkr delete all except <proxy-app> -y with buildx
 ```
 
 Use [Safety & Security](safety.md) before deleting data-bearing applications.
-

@@ -38,7 +38,7 @@ When invoked through `sudo`, DAM derives `<real-user-home>` from `SUDO_USER` whe
 
 DAM asks for directory basenames to ignore during discovery. Enter names separated by spaces, press Enter to retain existing exclusions, or enter `none` to clear them.
 
-Exclusions are exact directory-name matches, not paths or patterns. An excluded app is omitted from `all` selection and skipped by lifecycle processing, although `list` can show it as `excluded`.
+Exclusions are case-insensitive directory-name matches, not paths or patterns. An excluded app is omitted from `all` selection and skipped by lifecycle processing, although `list` can show it as `excluded`.
 
 ### 3. Global Command Name
 
@@ -107,4 +107,3 @@ sudo dkr config
 # Reconfigure an installation using raw action names.
 sudo docker-app-manager config
 ```
-

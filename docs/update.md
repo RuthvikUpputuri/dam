@@ -17,6 +17,10 @@ The `update` command is DAM's most complex lifecycle operation. For each app, it
 
 When no custom script is found (or the user declines to run it):
 
+### Explicit Compose Files
+
+When this standard Compose path runs, append `using <file1> <file2>...` to select files explicitly. If none of the requested files resolve for an app, `update` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses. A permitted `update*.sh` runs instead of the Compose path and does not consume these file selections.
+
 ### Step 1: Check Running State
 
 Before making any changes, DAM checks whether the app has any running containers:

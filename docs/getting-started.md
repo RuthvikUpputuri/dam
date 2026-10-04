@@ -9,6 +9,7 @@
 | **Docker Compose** | v2 plugin (`docker compose`) or standalone (`docker-compose`) | DAM auto-detects which is available |
 | **Linux** | Primary target | Tested on common distributions; other Unix-like systems may work |
 | **curl** | Any | Required only for `self-update` |
+| **column** | Any (part of `util-linux`) | Required by `list`, `get`, and `status` for table formatting |
 
 DAM explicitly checks these at startup:
 
@@ -51,7 +52,7 @@ The installer will:
 
 After completion:
 
-- The script is **symlinked** to `/usr/local/bin/docker-app-manager`
+- The temporary quick-install script is **copied** to `/usr/local/bin/docker-app-manager`, so deleting `/tmp/dam.sh` is safe
 - Command symlinks are created based on your choice
 - Configuration is saved to `/etc/docker-app-manager.conf`
 
@@ -134,7 +135,7 @@ The **directory basename** becomes the app name used in DAM commands. In this ex
 
 | File/Path | Purpose |
 | :-------- | :------ |
-| `/usr/local/bin/docker-app-manager` | Symlink to your `dam.sh` script |
+| `/usr/local/bin/docker-app-manager` | Copy of a `/tmp` or `/var/tmp` source; otherwise a symlink to your `dam.sh` script |
 | `/usr/local/bin/<cmd>` | Symlink(s) to `docker-app-manager` (your chosen command name or raw action names) |
 | `/etc/docker-app-manager.conf` | Bash-sourceable configuration file |
 
@@ -228,10 +229,10 @@ EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "templates" "archive")
 ```
 
 **Notes:**
-- Exclusion is by **basename only** - a directory named `recovered` at any depth under any search root will be excluded
+- Exclusion is by **basename only and case-insensitive** - a directory named `recovered` at any depth under any search root will be excluded
 - Excluded apps appear in `list` output with an "excluded" status marker
 - Excluded apps are skipped during `all` operations with a `[SKIP]` message
-- The `find` command uses `-name "$excl" -prune` which prevents descending into excluded directories at all
+- The `find` command uses `-iname "$excl" -prune` which prevents descending into excluded directories at all
 
 ---
 

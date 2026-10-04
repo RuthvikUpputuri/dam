@@ -18,20 +18,15 @@ The other primary files are ignored unless explicitly specified with the `using`
 
 ### Directory-Based Naming
 
-App names are derived from directory basenames. This means:
+By default, app names are derived strictly from directory basenames. This means:
 
 - **No two apps can share the same directory name** across different search roots
 - Directory names must not contain spaces
-- The user cannot assign custom names to apps
 - Renaming a directory effectively changes the app's identity
 
-### `name:` Override in Compose Files
+### Project Name Overrides
 
-If a Compose file sets `name: custom-project-name`, the Compose project name will differ from the directory name. This can cause:
-
-- `status` and `get` commands may not find the app's containers (they filter by directory name)
-- `list` may show "inactive" status for running apps
-- Containers will have labels with the custom name, not the directory name
+If you explicitly override the project name (using `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file), DAM will seamlessly respect this override. In these specific cases, you must use that custom name (instead of the directory name) when interacting with the app in DAM.
 
 ### Compose-Only Orchestration
 
@@ -43,6 +38,8 @@ DAM is designed exclusively for standalone Docker Compose. It does not work with
 ### Search Depth Limit
 
 Discovery uses `find -maxdepth "${MAX_SEARCH_DEPTH}"` (which defaults to 5). Apps nested deeper than this setting below a search root will not be found. This depth limit can be increased in the configuration file. The `maxdepth` only applies to the depth below the search roots defined in `SEARCH_DIRS`.
+
+Every qualifying directory within that depth is independently discovered. For example, `beta/old/compose.yaml` makes `old` an app even when it is only an archive below `beta`. If a directory should not be used as an app, add its basename to `EXCLUDE_DIRS` in `/etc/docker-app-manager.conf` to prevent discovery.
 
 ### Remote Docker Hosts
 
@@ -109,8 +106,7 @@ This inconsistency may complicate scripting if you're not expecting it.
 The `status` command matches containers using Docker labels (`com.docker.compose.project`). This means:
 
 - Apps that have never been started will show no containers
-- Apps started outside of DAM (e.g., via `docker compose up` directly in the directory) will be matched if the project name equals the directory name
-- Apps with `name:` overrides in their Compose files may not be matched correctly
+- Apps started outside of DAM (e.g., via `docker compose up` directly in the directory) will be matched normally (DAM seamlessly supports project name overrides if you used them).
 
 ### `list` Inventory Without Docker
 
@@ -218,4 +214,4 @@ If `UPDATE_SHA256` is not set (the default), self-update performs only basic val
 
 6. **The `using` modifier file priority**: A bare file like `<name>.yml` will take precedence over a prefixed file like `compose.<name>.yml` when using a shorthand like `using <name>`. See [The `using` Modifier in commands.md](commands.md#the-using-modifier) for the exact resolution priority order.
 
-7. **The `using` modifier with partial matches**: If you provide multiple files (e.g., `using base prod`) and an app only has `base.yml` but not `prod.yml`, DAM will strictly run with just `base.yml` and print a warning that `prod` was not found for that specific app. It only falls back to the default compose file if *none* of the requested files are found. At the very end of the run, DAM prints a global summary explicitly listing which specific apps were missing the file.
+7. **The `using` modifier with partial matches**: If you provide multiple files (e.g., `using base prod`) and an app only has `base.yml` but not `prod.yml`, DAM will strictly run with just `base.yml` and print a warning that `prod` was not found for that specific app. If none of the requested files are found, only `stop`, `recreate`, `force-recreate`, and `delete` fail rather than falling back to the default Compose file; other actions keep the fallback. At the very end of the run, DAM prints a global summary explicitly listing which specific apps were missing the file.

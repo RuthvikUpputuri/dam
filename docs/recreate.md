@@ -47,6 +47,10 @@ docker compose ps
 
 DAM prints the current status of the app's services to confirm that the fresh containers are running successfully.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `recreate` fails that app instead of tearing down and rebuilding the stack described by its default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram

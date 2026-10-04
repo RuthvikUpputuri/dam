@@ -20,13 +20,12 @@ jobs:
 
       - name: Calculate New Version and Update Script
         id: bump
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           # Extract current version from script
           CURRENT_VERSION=$(grep -oP '^#VERSION="\K[0-9]+\.[0-9]+\.[0-9]+' dam.sh)
           IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
-          
-          # Read the commit message
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
           
           # Calculate new version based on tags in your commit message
           if [[ "$COMMIT_MSG" == *"[major]"* ]]; then
@@ -39,8 +38,9 @@ jobs:
           
           echo "Bumping from $CURRENT_VERSION to $NEW_VERSION"
           
-          # Update the file
-          sed -i "s/#VERSION=\"$CURRENT_VERSION\"/#VERSION=\"$NEW_VERSION\"/" dam.sh
+          # Update the version across all files dynamically (excluding this workflow file)
+          # This finds any file containing the current version and replaces it with the new version!
+          git grep -l "$CURRENT_VERSION" | grep -v "\.github/workflows" | xargs -r sed -i "s/$CURRENT_VERSION/$NEW_VERSION/g"
           
           # Export to next steps
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV

@@ -18,6 +18,12 @@ DAM will think `postgres` is a second app folder, fail to find it, and throw an 
 
 ---
 
+## Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `logs` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
+---
+
 ## Examples Scenarios
 
 ```bash

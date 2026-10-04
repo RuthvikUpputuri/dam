@@ -138,7 +138,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 | `find_app_dir()` | 107-177 | Resolves an app name to a directory path. Uses caching. |
 | `has_compose_files()` | 280-286 | Checks if a directory contains any compose file |
 | `get_app_compose_file()` | 288-303 | Returns the highest-priority compose filename |
-| `resolve_compose_files()` | 316-338 | Resolves `using` files logic into `-f` arguments for compose |
+| `resolve_compose_files()` | 316-338 | Resolves `using` files into `-f` arguments; rejects an all-missing file set only for `stop`, `recreate`, `force-recreate`, and `delete` |
 | `has_update_files()` | 305-312 | Checks if a directory has compose files OR update scripts |
 | `get_all_apps()` | 495-524 | Returns all discovered app names (for `all` selector) |
 | `is_excluded()` | 241-247 | Checks if a folder name is in EXCLUDE_DIRS |
@@ -292,7 +292,7 @@ Understanding how DAM (Docker App Manager) interacts with your system and Docker
 DAM's fundamental philosophy is that **directories equal projects**.
 
 1. **Human-Facing Application Name**: The name you type in the CLI (e.g., `<app-name>`).
-2. **Application Directory**: DAM searches its configured `SEARCH_DIRS` for a folder exactly matching this name. This directory is treated as the application's home.
+2. **Application Directory**: DAM searches its configured `SEARCH_DIRS` for a folder exactly matching this name. (If you explicitly overridden the name via `.env` or `name:`, DAM will match that custom name instead). This directory is treated as the application's home.
 3. **Compose File**: DAM looks inside the discovered directory for a standard Docker Compose file (e.g., `docker-compose.yml`, `compose.yaml`).
 4. **Docker Compose Project**: When executing commands, DAM sets the application directory as the working directory (`PWD`). Docker Compose then uses the directory's basename as the **Project Name** by default.
 
@@ -323,7 +323,7 @@ DAM abstracts this distinction, but understanding it is critical when using comm
 
 | Concept | What It Is | Example |
 | :------ | :--------- | :------ |
-| **Project Name** | The name of the entire application stack. Derived from the directory name. | `<app-name>` |
+| **Project Name** | The name of the entire application stack. Derived from the directory name (by default). | `<app-name>` |
 | **Service Name** | A logical component of your project defined in `compose.yaml` under `services:`. | `<app-name>`, `postgres`, `redis` |
 | **Container Name** | The actual running instance of a service, named by Compose. | `<app-name>-<app-name>-1`, `<app-name>-postgres-1` |
 

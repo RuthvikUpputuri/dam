@@ -36,6 +36,10 @@ docker compose ps
 
 After the containers are created and started, DAM prints the current status of the app's services to confirm that all containers are successfully running.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `start` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram

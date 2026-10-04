@@ -30,7 +30,7 @@ Before comparing commands, it's essential to understand the conceptual differenc
 7. **Custom update scripts** - app-specific update logic via `update*.sh`
 8. **Running state preservation** - `update` skips container startup for stopped apps
 9. **Global commands** - run from anywhere, no `cd` needed
-10. **Custom Compose files** - `using files...` merges explicit Compose files directly by appending `-f` flags
+10. **Custom Compose files** - `using files...` merges explicit Compose files directly by appending `-f` flags. An all-missing file set fails `stop`, `recreate`, `force-recreate`, and `delete`; other Compose actions use their default Compose file.
 
 ---
 

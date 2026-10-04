@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version 1.2.0">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/bash-4.4%2B-orange?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash 4.4+">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  Built for sysadmins, hobbyists, and self-hosters who love the CLI but hate <code>cd</code>-ing into every stack folder.
+  Built for sysadmins, hobbyists, and self-hosters who love the CLI but hate <code>cd</code>-ing into every stack folder just to manage apps.
 </p>
 
 <p align="center">
@@ -155,6 +155,7 @@ It is intentionally focused on **one compose project per folder** which is the p
 | **Bash 4.4+** | Required (empty-array expansion under `set -u`) |
 | **Docker** | Daemon must be running and accessible by your user |
 | **Docker Compose** | Either the v2 plugin (`docker compose`) or standalone `docker-compose` |
+| **column** | Part of `util-linux`; used by `list`, `get`, and `status` for table formatting |
 | **Linux** (primary) | Tested on common Linux distributions; other Unix-like systems may work |
 
 Check versions:
@@ -179,7 +180,7 @@ The installer will:
 - Let you set folder names to always exclude
 - Let you choose a global command name (default: `dkr`, or `none` for raw commands like `start` / `stop`)
 - Configure whether custom `update*.sh` scripts run automatically or require confirmation
-- Symlink the script to `/usr/local/bin/docker-app-manager` and create command symlinks
+- Copy the temporary quick-install download to `/usr/local/bin/docker-app-manager` and create command symlinks
 - Write configuration to `/etc/docker-app-manager.conf`
 
 After installation you can use the commands from anywhere.
@@ -233,6 +234,7 @@ The same selection syntax works for almost every action:
 Optional modifiers:
 
 - Append `using <file1> <file2>...` to explicitly specify which Compose files to use (e.g. `using compose.yaml compose.override.yaml`). It automatically resolves shorthand names (e.g., `dev` to `dev.yaml` or `compose.dev.yaml`).
+  - If none of the requested files resolve, `stop`, `recreate`, `force-recreate`, and `delete` fail rather than using the default Compose file. Other Compose actions fall back to their default Compose file. If at least one file resolves, DAM runs with only the matched files and warns about the missing ones.
 - Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** to trigger extended cleanup.
 - Use `-y` or `--yes` to skip confirmation prompts (especially important for `delete all` and volume/image prunes).
 
@@ -449,6 +451,8 @@ Installed configuration lives at `/etc/docker-app-manager.conf` - a Bash-sourcea
    - or (for update mode) an `update*.sh` script
 
 🚨 **App name** = basename of the directory. If multiple directories share the same name, DAM reports an error and refuses to guess.
+
+*(Note: If you already explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it. You do not need to remove those overrides for DAM to work! Simply use that custom name when running commands.)*
 
 > 📖 **Full details:** [docs/application-discovery.md](docs/application-discovery.md)
 

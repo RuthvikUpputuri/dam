@@ -41,6 +41,10 @@ docker compose ps
 ```
 This gives you immediate visual confirmation that the `STATUS` column has shifted from `Paused` back to `Up`.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `unpause` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## Example Scenarios

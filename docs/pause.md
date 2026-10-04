@@ -34,6 +34,10 @@ docker compose ps
 
 After the pause operation completes, DAM prints the current status of the app's services. You will see the state change to `Paused` (instead of `Up` or `Exited`).
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `pause` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram
