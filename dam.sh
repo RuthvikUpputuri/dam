@@ -1579,16 +1579,32 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         echo -e "${RED}[ERROR]${NC} This command must be run with sudo."
         exit 1
     fi
+
+    # [SECURITY] Mitigate TOCTOU vulnerability during installation
+    # If executing from a world-writable temp directory, immediately stage the script
+    # into a root-owned, non-world-writable location to prevent malicious modification
+    # by an unprivileged user during the interactive prompts.
+    if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
+        SCRIPT_SOURCE_PATH="$(realpath "$0")"
+        if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
+            old_umask=$(umask)
+            umask 077
+            safe_staged_script="$(mktemp /tmp/dam-install-XXXXXX.tmp)"
+            umask "$old_umask"
+            cat "$SCRIPT_SOURCE_PATH" > "$safe_staged_script"
+            SCRIPT_SOURCE_PATH="$safe_staged_script"
+            trap 'rm -f "$safe_staged_script"' EXIT
+        fi
+    fi
     
     if [[ "${1:-}" == "install" && ( "${2:-}" == "--refresh" || "${2:-}" == "refresh" ) ]]; then
         # Install the script to system bin: copy from temp paths, symlink from persistent paths
-        if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
-            script_path="$(realpath "$0")"
-            if [[ "$script_path" == /tmp/* || "$script_path" == /var/tmp/* ]]; then
+        if [[ -n "${SCRIPT_SOURCE_PATH:-}" ]]; then
+            if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
                 rm -f "/usr/local/bin/docker-app-manager"
-                cp -f "$script_path" "/usr/local/bin/docker-app-manager"
+                cp -f "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
             else
-                ln -sf "$script_path" "/usr/local/bin/docker-app-manager"
+                ln -sf "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
             fi
             chmod 755 "/usr/local/bin/docker-app-manager"
         fi
@@ -1947,15 +1963,14 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         # Install the script to system bin: copy from temp paths to avoid dangling
         # symlinks (e.g. quick-install one-liner), symlink from persistent paths
         # so edits are globally reflected immediately.
-        if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
-            script_path="$(realpath "$0")"
-            if [[ "$script_path" == /tmp/* || "$script_path" == /var/tmp/* ]]; then
+        if [[ -n "${SCRIPT_SOURCE_PATH:-}" ]]; then
+            if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
                 rm -f "/usr/local/bin/docker-app-manager"
-                cp -f "$script_path" "/usr/local/bin/docker-app-manager"
+                cp -f "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
                 echo -e "  ${CYAN}[INFO]${NC} Copied script to /usr/local/bin (source is in a temp directory)."
             else
-                ln -sf "$script_path" "/usr/local/bin/docker-app-manager"
-                echo -e "  ${CYAN}[INFO]${NC} Symlinked script from ${script_path}."
+                ln -sf "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
+                echo -e "  ${CYAN}[INFO]${NC} Symlinked script from ${SCRIPT_SOURCE_PATH}."
             fi
             chmod 755 "/usr/local/bin/docker-app-manager"
         fi
