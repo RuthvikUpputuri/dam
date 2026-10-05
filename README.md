@@ -156,7 +156,7 @@ It is intentionally focused on **one compose project per folder**, a standard ar
 | **Docker** | Daemon must be running and accessible by your user |
 | **Docker Compose** | Either the v2 plugin (`docker compose`) or standalone `docker-compose` |
 | **column** | Part of `util-linux`; used by `list`, `get`, and `status` for table formatting |
-| **Linux** (primary) | Tested on common Linux distributions; other Unix-like systems may work |
+| **Linux** (primary) | Tested on all common Linux distributions (Debian, Ubuntu, Arch, etc.). Fully compatible with Windows **WSL/WSL2**. macOS works if modern Bash 4.4+ is installed via Homebrew. |
 
 Check versions:
 
@@ -540,7 +540,7 @@ dkr cleanup -y
 - **One compose project per folder.** Does not manage multi-file compose selections, profiles, or Swarm/Kubernetes.
 - **No spaces** in app names or paths.
 - Discovery depth is capped at 5 levels under each search root.
-- Designed primarily for Linux self-hosted environments.
+- Designed primarily for Linux and WSL self-hosted environments. macOS requires manual installation of modern Bash.
 - Custom update scripts: only the first alphabetically is executed.
 - `debug` command is a placeholder (not yet implemented).
 
