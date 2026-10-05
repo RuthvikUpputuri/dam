@@ -125,7 +125,7 @@ This means if you reference the same app name multiple times (e.g., in `status` 
 
 ## Duplicate Name Handling
 
-If the same directory name exists under different search roots (or at different depths), DAM treats this as an error:
+If the exact same directory name (case-sensitive) exists under different search roots (or at different depths), DAM treats this as an error:
 
 ```
 [ERROR] Multiple matching apps found for 'myapp':
@@ -133,13 +133,15 @@ If the same directory name exists under different search roots (or at different 
   - /home/user/apps/myapp
 ```
 
+*Note: DAM uses smart hybrid-case matching. This means `/opt/stacks/n8n` and `/opt/stacks/N8n` are correctly identified as two separate distinct applications. Duplicate errors are only thrown if two directories share the **exact same** case-sensitive spelling.*
+
 There is **no precedence rule** between search roots. DAM does not prefer one search directory over another - it requires unique names which is also recommended in general by Docker.
 
 ### Resolution
 
 To fix duplicate names:
+- Assign a unique custom name in `.env` (`COMPOSE_PROJECT_NAME`) or `compose.yaml` (`name:`) to act as a distinct alias tie-breaker
 - Rename one of the directories
-- Change the custom name in `.env` or `name:` (if you are overriding the default)
 - Remove the unwanted directory from `SEARCH_DIRS`
 - Move one directory into an excluded directory name
 
@@ -195,9 +197,10 @@ This means:
 ### Edge Case: Overriding the Project Name
 
 If you explicitly define a custom name in a `.env` file (`COMPOSE_PROJECT_NAME`) or a `compose.yaml` file (`name:`), DAM will seamlessly support it. In this scenario:
-- The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name.
-- `list` shows the folder name in APP and the custom name in PROJECT.
-- `status`, `get` and the container state use the effective project name to find containers.
+- The custom project name is accepted natively as a first-class alias for commands like `start`, `kill`, `update`, etc.
+- If two completely different directories happen to share the exact same basename, setting a unique custom name for each allows you to bypass duplicate errors entirely! You can simply run commands using the unique aliases.
+- `list` shows the folder name in the APP column and the custom name in the PROJECT column.
+- `status`, `get` and container state matching inherently use the effective project name.
 
 ---
 

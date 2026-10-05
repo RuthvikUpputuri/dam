@@ -61,7 +61,7 @@ dkr list all except <app-name> [app-name ...]
 
 ### Discovery Process
 1. DAM uses its optimized `find_app_dir` routine to locate the specific directories for the requested apps (or discovers all non-excluded apps if `all` is used).
-2. If multiple apps share the same name across different search directories, DAM will report a `DUPLICATE` error and skip listing that specific app.
+2. If multiple apps share the exact same case-sensitive name across different search directories, DAM will report a `DUPLICATE` error. *(Note: Thanks to smart hybrid-case matching, apps like `n8n` and `N8n` are safely recognized as unique).*
 3. If an app cannot be found, it is simply omitted from the final table.
 
 ### Status Determination
