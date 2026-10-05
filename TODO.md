@@ -16,6 +16,8 @@ DAM should make common operations on application stacks easier, not become a sec
 
 These are not commitments or active work. Revisit them when there is a demonstrated user need.
 
+- **Dependency Graph / Shared Resources:** During bulk operations (like `recreate all`), sequentially tearing down a stack might fail or disrupt other apps if it shares networks or volumes without `external: true` set. Consider implementing execution order dependencies (e.g., via a `.dam-dependencies` file) to ensure database stacks start before web stacks, mitigating resource conflicts.
+
 - **Compose profiles:** Consider support for profiles in app operations. Prefer forwarding familiar Compose options where practical over inventing a DAM-specific command model.
 - **Health-aware update verification:** After an update, optionally wait for services with declared health checks and fail with a clear report if they become unhealthy. Define which services are checked and a strict timeout; do not automatically roll back.
 - **Structured output:** If users need to script DAM, consider stable JSON for `list`, `status`, and diagnostics. `get` already provides scriptable output. A `--no-color` option is a smaller usability improvement.

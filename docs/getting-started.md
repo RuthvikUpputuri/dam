@@ -229,10 +229,10 @@ EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "templates" "archive")
 ```
 
 **Notes:**
-- Exclusion is by **basename only and case-insensitive** - a directory named `recovered` at any depth under any search root will be excluded
+- Exclusion is by **basename only and is case-sensitive** - a directory matching the exact casing of `recovered` at any depth under any search root will be excluded
 - Excluded apps appear in `list` output with an "excluded" status marker
 - Excluded apps are skipped during `all` operations with a `[SKIP]` message
-- The `find` command uses `-iname "$excl" -prune` which prevents descending into excluded directories at all
+- The `find` command uses `-name "$excl" -prune` which prevents descending into excluded directories at all
 
 ---
 

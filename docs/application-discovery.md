@@ -60,15 +60,16 @@ DAM uses `find` with `-mindepth 1 -maxdepth 5`. This means:
 
 ### Directory Exclusion
 
-Directories whose **basename** matches any entry in `EXCLUDE_DIRS`, case-insensitively, are pruned from the search:
+Directories whose **basename** matches any entry in `EXCLUDE_DIRS` exactly (case-sensitive) are pruned from the search:
 
 ```bash
-EXCLUDE_DIRS=("recovered" "recovered-configs" "unused")
+EXCLUDE_DIRS=("recovered" "backups" "unused" "old")
 ```
 
-Pruning uses `find -iname "$excl" -prune`, which means:
+Pruning uses `find -name "$excl" -prune`, which means:
 - The excluded directory and all its children are skipped entirely
-- Exclusion is by **name only**, not by full path - a directory named `recovered` at any depth under any search root will be excluded
+- Exclusion is by **name only**, not by full path.
+- **Case-Sensitive Example:** If `EXCLUDE_DIRS=("recovered")`, a directory named `recovered` at any depth will be excluded. However, a directory named `Recovered` or `RECOVERED` will NOT be excluded, because DAM treats them as distinctly separate apps to preserve hybrid case matching.
 
 ### Validation
 
@@ -201,6 +202,9 @@ If you explicitly define a custom name in a `.env` file (`COMPOSE_PROJECT_NAME`)
 - If two completely different directories happen to share the exact same basename, setting a unique custom name for each allows you to bypass duplicate errors entirely! You can simply run commands using the unique aliases.
 - `list` shows the folder name in the APP column and the custom name in the PROJECT column.
 - `status`, `get` and container state matching inherently use the effective project name.
+
+> **Parser Limitation:** To maintain lightning-fast discovery across dozens of stacks, DAM uses a lightweight text scanner (`awk`) rather than a full YAML/env evaluation engine to detect custom names. Because of this, it does not support multi-line names, complex quoting, or variable interpolation (e.g., `name: ${MY_ENV_VAR}`) for custom aliases. Stick to simple, hardcoded strings.
+
 
 ---
 

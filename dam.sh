@@ -116,10 +116,7 @@ build_app_dir_cache() {
     done
     [[ ${#valid_search_dirs[@]} -eq 0 ]] && return 0
 
-    local LIST_PRUNE_ARGS=()
-    for excl in "${EXCLUDE_DIRS[@]}"; do
-        LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
-    done
+    # Remove LIST_PRUNE_ARGS from here since we should use FIND_PRUNE_ARGS
 
     while IFS= read -r -d '' match; do
         local has_compose=false
@@ -156,7 +153,7 @@ build_app_dir_cache() {
                 APP_DIR_PRIMARY["$folder_name"]=true
             fi
         fi
-    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
+    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
     
     # Pass 2: map effective names as secondary aliases
     for match in "${valid_matches[@]}"; do
