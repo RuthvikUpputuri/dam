@@ -122,7 +122,7 @@ DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compo
 | Custom update logic per app | Supports `update*.sh` scripts in the app folder |
 | Want short commands | Install once → use `start`, `stop`, `update`, … (or with a custom prefix like `dkr`) |
 
-It is intentionally focused on **one compose project per folder** which is the pattern used by most self-hosters and hobby setups.
+It is intentionally focused on **one compose project per folder**, a standard architectural pattern widely used by professional sysadmins, DevOps teams, and self-hosters alike for clean, modular application management.
 
 ---
 
@@ -451,9 +451,9 @@ Installed configuration lives at `/etc/docker-app-manager.conf` - a Bash-sourcea
    - `compose.yaml` / `compose.yml` / `docker-compose.yaml` / `docker-compose.yml`
    - or (for update mode) an `update*.sh` script
 
-🚨 **App name** = basename of the directory. If multiple directories share the same name, DAM reports an error and refuses to guess.
+🚨 **App name** = the directory basename (or its custom Docker project name). DAM uses smart hybrid-case matching, meaning you *can* safely have different apps named `n8n` and `N8n`. However, if two completely separate directories share the *exact same* name, DAM safely reports a duplicate error to prevent dangerous collisions.
 
-*(Note: If you explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it. The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name. `list` shows the folder name in APP and the custom name in PROJECT; `status`, `get` and the container state use the effective project name to find containers.)*
+*(Note: If you explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it as an alias. `list` shows the folder name in APP and the custom name in PROJECT; commands like `start` and `kill` accept either name natively!)*
 
 > 📖 **Full details:** [docs/application-discovery.md](docs/application-discovery.md)
 

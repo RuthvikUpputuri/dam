@@ -10,7 +10,7 @@ on:
 jobs:
   release:
     # Ignore commits made by the bot itself to prevent infinite loops
-    if: "!contains(github.event.head_commit.message, 'chore: auto-bump version')"
+    if: "!contains(github.event.head_commit.message, '🚀 Release v')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -63,7 +63,7 @@ jobs:
 
       - name: Commit version bump
         run: |
-          git commit -am "chore: auto-bump version to ${{ env.NEW_VERSION }}"
+          git commit -am "🚀 Release v${{ env.NEW_VERSION }}"
           git push
 
       - name: Create GitHub Release
