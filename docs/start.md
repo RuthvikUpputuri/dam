@@ -36,6 +36,10 @@ docker compose ps
 
 After the containers are created and started, DAM prints the current status of the app's services to confirm that all containers are successfully running.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `start` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram
@@ -67,13 +71,13 @@ After the containers are created and started, DAM prints the current status of t
 dkr start <app-name>
 
 # Start multiple specific apps
-dkr start <app-name> <app-name-2> <proxy-app>
+dkr start <app-name> <app-name-2> <app3>
 
 # Start all available apps
 dkr start all
 
-# Start all apps except the reverse proxy and portainer
-dkr start all except <proxy-app> portainer
+# Start all apps except specific apps
+dkr start all except <app3> <app4>
 
 # Start an app merging specific compose files (e.g. dev and prod)
 dkr start <app-name> using compose dev prod

@@ -34,6 +34,10 @@ docker compose ps
 
 After the pause operation completes, DAM prints the current status of the app's services. You will see the state change to `Paused` (instead of `Up` or `Exited`).
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `pause` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram
@@ -65,11 +69,11 @@ After the pause operation completes, DAM prints the current status of the app's 
 dkr pause <app-name>
 
 # Pause multiple specific apps
-dkr pause <app-name> <app-name-2> <proxy-app>
+dkr pause <app-name> <app-name-2> <app3>
 
 # Pause all available apps
 dkr pause all
 
-# Pause all apps except the reverse proxy and portainer
-dkr pause all except <proxy-app> portainer
+# Pause all apps except specific apps
+dkr pause all except <app3> <app4>
 ```

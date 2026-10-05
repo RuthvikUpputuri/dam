@@ -4,7 +4,7 @@ DAM should make common operations on application stacks easier, not become a sec
 
 ## Active TODO
 
-- [ ] **Compose project identity support**
+- [x] **Compose project identity support**
   *Added: 2026-10-01*
   Make app discovery and app-scoped commands resolve the effective Compose project name, including the Compose `name:` field and `COMPOSE_PROJECT_NAME`, rather than assuming it always matches the app directory. Do not add arbitrary app aliases as part of this work.
 

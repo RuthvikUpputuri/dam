@@ -36,7 +36,8 @@ docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com
 This entirely avoids querying Docker individually for each app.
 
 ### Output Table Columns
-- **APP**: The discovered directory name (which acts as the app name).
+- **APP**: The discovered directory name.
+- **PROJECT**: The effective Docker Compose project name, if it differs from the folder name. Otherwise, it shows `-`.
 - **LOCATION**: The absolute path to the app (paths under `$HOME` are shortened with `~`).
 - **COMPOSE**: The name of the primary compose file detected (or `-` if it relies solely on a custom update script).
 - **STATUS**: The overall state of the app.
@@ -69,7 +70,8 @@ For each specified app, DAM uses the same highly optimized global `docker ps -a`
 2. If not, it checks the cache to see if the app is `stopped` (meaning containers exist but none are running).
 
 ### Output Table Columns
-- **APP**: The requested app name.
+- **APP**: The folder name.
+- **PROJECT**: The effective project name, if different from the folder name.
 - **PATH**: The exact path where the app was found.
 - **COMPOSE FILE**: The detected compose file.
 - **OVERALL STATE**: `running`, `stopped`, `inactive`, or `excluded`.
@@ -92,13 +94,13 @@ While they sound similar, they produce different output using different mechanic
 dkr list
 
 # Runs the detailed app-level query for specific apps
-dkr list <app2> <app-name> <proxy-app>
+dkr list <app2> <app-name> <app3>
 
 # Runs the detailed app-level query for ALL targetable apps (omits excluded ones)
 dkr list all
 
 # Runs the detailed app-level query for all apps EXCEPT specific ones
-dkr list all except <proxy-app> portainer
+dkr list all except <app3> <app4>
 ```
 
 ---

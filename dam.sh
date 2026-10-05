@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-#
 #VERSION="1.2.0"
 #
 # =============================================================================
@@ -30,21 +29,21 @@
 #
 # App selection syntax (same for start/stop/restart/recreate/force-recreate/delete/update):
 #   <action> all                             - All apps (destructive actions require -y/--yes)
-#   <action> all except traefik portainer    - All apps except specified apps
+#   <action> all except <app3> <app4>    - All apps except specified apps
 #   <action> homarr                          - Single specified app
-#   <action> n8n langflow traefik            - Multiple specified apps
+#   <action> n8n langflow <app-name>            - Multiple specified apps
 #
 # Optional: Append 'with vol', 'with net', etc. to run extended cleanup on delete.
-# Example:  delete all except traefik with vol net
+# Example:  delete all except <app-name> with vol net
 #
 # Note: App names and paths must not contain spaces.
 # Scope and limitations: This tool manages one compose project per folder using the standard filenames.
 # It does not support Swarm, Kubernetes, or folders that need several compose files selected manually.
 #
 # Examples:
-#   start all except traefik
+#   start all except <app-name>
 #   restart homarr n8n
-#   recreate all except traefik
+#   recreate all except <app-name>
 #   delete affine
 #   cleanup
 #   cleanup buildx
@@ -106,6 +105,87 @@ done
 
 declare -gA APP_DIR_CACHE
 
+declare -g APP_DIR_CACHE_BUILT=false
+
+build_app_dir_cache() {
+    local valid_search_dirs=()
+    declare -gA APP_DIR_PRIMARY=()
+    local valid_matches=()
+    for d in "${SEARCH_DIRS[@]}"; do
+        [[ -d "$d" ]] && valid_search_dirs+=("$d")
+    done
+    [[ ${#valid_search_dirs[@]} -eq 0 ]] && return 0
+
+    local LIST_PRUNE_ARGS=()
+    for excl in "${EXCLUDE_DIRS[@]}"; do
+        LIST_PRUNE_ARGS+=( -name "$excl" -prune -print0 -o )
+    done
+
+    while IFS= read -r -d '' match; do
+        local has_compose=false
+        for cf in "${COMPOSE_FILENAMES[@]}"; do
+            if [[ -f "$match/$cf" ]]; then
+                has_compose=true
+                break
+            fi
+        done
+        if ! $has_compose; then
+            for f in "$match"/update*.sh; do
+                if [[ -f "$f" ]]; then
+                    has_compose=true
+                    break
+                fi
+            done
+        fi
+        
+        if $has_compose; then
+            valid_matches+=("$match")
+            local folder_name
+            folder_name="$(basename "$match")"
+            
+            local existing="${APP_DIR_CACHE["$folder_name"]:-}"
+            if [[ -z "$existing" ]]; then
+                APP_DIR_CACHE["$folder_name"]="$match"
+                APP_DIR_PRIMARY["$folder_name"]=true
+            elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
+                if [[ "$existing" == "DUPLICATE:"* ]]; then
+                    APP_DIR_CACHE["$folder_name"]="${existing}|${match}"
+                else
+                    APP_DIR_CACHE["$folder_name"]="DUPLICATE:${existing}|${match}"
+                fi
+                APP_DIR_PRIMARY["$folder_name"]=true
+            fi
+        fi
+    done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null)
+    
+    # Pass 2: map effective names as secondary aliases
+    for match in "${valid_matches[@]}"; do
+        local effective_name
+        effective_name="$(get_effective_app_name "$match")"
+        
+        # Don't map it if the effective name is exactly the folder name (already mapped in pass 1)
+        [[ "$effective_name" == "$(basename "$match")" ]] && continue
+        
+        local existing="${APP_DIR_CACHE["$effective_name"]:-}"
+        if [[ -z "$existing" ]]; then
+            APP_DIR_CACHE["$effective_name"]="$match"
+        elif [[ "$existing" != "$match" && "$existing" != *"|$match"* ]]; then
+            # Conflict. Let primary folder names win.
+            if [[ "${APP_DIR_PRIMARY["$effective_name"]:-false}" == "true" ]]; then
+                continue
+            else
+                if [[ "$existing" == "DUPLICATE:"* ]]; then
+                    APP_DIR_CACHE["$effective_name"]="${existing}|${match}"
+                else
+                    APP_DIR_CACHE["$effective_name"]="DUPLICATE:${existing}|${match}"
+                fi
+            fi
+        fi
+    done
+    
+    APP_DIR_CACHE_BUILT=true
+}
+
 find_app_dir() {
     local target="$1"
     if [[ "$target" =~ [[:space:]] ]]; then
@@ -113,68 +193,75 @@ find_app_dir() {
         return 1
     fi
     
-    if [[ -n "${APP_DIR_CACHE["$target"]:-}" ]]; then
-        local cached_result="${APP_DIR_CACHE["$target"]}"
-        if [[ "$cached_result" == "DUPLICATE:"* ]]; then
-            echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
-            local matches="${cached_result#DUPLICATE:}"
-            while IFS='|' read -r match; do
-                [[ -n "$match" ]] && echo -e "  - ${match}" >&2
-            done <<< "$matches"
-            return 1
-        elif [[ "$cached_result" == "NOT_FOUND" ]]; then
-            return 0
-        else
-            echo "$cached_result"
-            return 0
-        fi
+    if [[ "${APP_DIR_CACHE_BUILT:-false}" != "true" ]]; then
+        build_app_dir_cache
     fi
-
-    local valid_search_dirs=()
-    for d in "${SEARCH_DIRS[@]}"; do
-        [[ -d "$d" ]] && valid_search_dirs+=("$d")
-    done
     
-    if [[ ${#valid_search_dirs[@]} -gt 0 ]]; then
-        local found=()
-        while IFS= read -r -d '' match; do
-            local has_compose=false
-            for cf in "${COMPOSE_FILENAMES[@]}"; do
-                if [[ -f "$match/$cf" ]]; then
-                    has_compose=true
-                    break
+    local cached_result="${APP_DIR_CACHE["$target"]:-NOT_FOUND}"
+    
+    # Fallback to case-insensitive search if exact match fails
+    if [[ "$cached_result" == "NOT_FOUND" ]]; then
+        local target_lower="${target,,}"
+        local ci_matches=()
+        for key in "${!APP_DIR_CACHE[@]}"; do
+            if [[ "${key,,}" == "$target_lower" ]]; then
+                local mapped_dir="${APP_DIR_CACHE["$key"]}"
+                # If the key itself is a duplicate, we need to extract all its dirs
+                if [[ "$mapped_dir" == "DUPLICATE:"* ]]; then
+                    local dupes="${mapped_dir#DUPLICATE:}"
+                    IFS='|' read -ra dupe_array <<< "$dupes"
+                    for match in "${dupe_array[@]}"; do
+                        [[ -n "$match" ]] && ci_matches+=("$match")
+                    done
+                else
+                    ci_matches+=("$mapped_dir")
                 fi
-            done
-            if ! $has_compose; then
-                for f in "$match"/update*.sh; do
-                    if [[ -f "$f" ]]; then
-                        has_compose=true
+            fi
+        done
+        
+        # Deduplicate ci_matches
+        if [[ ${#ci_matches[@]} -gt 0 ]]; then
+            local unique_matches=()
+            for m in "${ci_matches[@]}"; do
+                local found_unique=false
+                for u in "${unique_matches[@]}"; do
+                    if [[ "$m" == "$u" ]]; then
+                        found_unique=true
                         break
                     fi
                 done
-            fi
-            if $has_compose; then
-                found+=("$match")
-            fi
-        done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -name "$target" -print0 2>/dev/null)
-        
-        if [[ ${#found[@]} -eq 1 ]]; then
-            APP_DIR_CACHE["$target"]="${found[0]}"
-            echo "${found[0]}"
-        elif [[ ${#found[@]} -gt 1 ]]; then
-            local matches_str=""
-            echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
-            for match in "${found[@]}"; do
-                matches_str+="${match}|"
-                echo -e "  - ${match}" >&2
+                if ! $found_unique; then
+                    unique_matches+=("$m")
+                fi
             done
-            APP_DIR_CACHE["$target"]="DUPLICATE:${matches_str}"
-            return 1
-        else
-            APP_DIR_CACHE["$target"]="NOT_FOUND"
+            
+            if [[ ${#unique_matches[@]} -eq 1 ]]; then
+                cached_result="${unique_matches[0]}"
+            elif [[ ${#unique_matches[@]} -gt 1 ]]; then
+                local matches_str=""
+                for m in "${unique_matches[@]}"; do
+                    matches_str+="${m}|"
+                done
+                cached_result="DUPLICATE:${matches_str}"
+            fi
         fi
+    fi
+    
+    if [[ "$cached_result" == "DUPLICATE:"* ]]; then
+        echo -e "${RED}[ERROR]${NC} Multiple matching apps found for '${target}':" >&2
+        local matches="${cached_result#DUPLICATE:}"
+        IFS='|' read -ra match_array <<< "$matches"
+        for match in "${match_array[@]}"; do
+            [[ -n "$match" ]] && echo -e "  - ${match}" >&2
+        done
+        FOUND_APP_DIR="DUPLICATE:$matches"
+        return 1
+    elif [[ "$cached_result" == "NOT_FOUND" ]]; then
+        FOUND_APP_DIR=""
+        return 0
     else
-        APP_DIR_CACHE["$target"]="NOT_FOUND"
+        FOUND_APP_DIR="$cached_result"
+        return 0
     fi
 }
 
@@ -242,21 +329,27 @@ print_summary() {
 
 is_excluded() {
     local folder="$1"
+    local excl
     for excl in "${EXCLUDE_DIRS[@]}"; do
         [[ "$folder" == "$excl" ]] && return 0
     done
     return 1
 }
 
+_DC_CMD=()
+
 dc() {
-    if docker compose version &>/dev/null; then
-        docker compose ${DC_FILE_ARGS[@]+"${DC_FILE_ARGS[@]}"} "$@"
-    elif docker-compose version &>/dev/null; then
-        docker-compose ${DC_FILE_ARGS[@]+"${DC_FILE_ARGS[@]}"} "$@"
-    else
-        echo -e "${RED}[ERROR]${NC} Neither 'docker compose' nor 'docker-compose' is available."
-        return 1
+    if [[ ${#_DC_CMD[@]} -eq 0 ]]; then
+        if docker compose version &>/dev/null; then
+            _DC_CMD=(docker compose)
+        elif docker-compose version &>/dev/null; then
+            _DC_CMD=(docker-compose)
+        else
+            echo -e "${RED}[ERROR]${NC} Neither 'docker compose' nor 'docker-compose' is available."
+            return 1
+        fi
     fi
+    "${_DC_CMD[@]}" ${DC_FILE_ARGS[@]+"${DC_FILE_ARGS[@]}"} "$@"
 }
 
 docker_ready() {
@@ -313,9 +406,43 @@ has_update_files() {
     return 1
 }
 
+get_effective_app_name() {
+    local dir="$1"
+    local cfile
+    cfile="$(get_app_compose_file "$dir")"
+    
+    local name=""
+    
+    if [[ -f "$dir/.env" ]]; then
+        name="$(awk -F '=' '/^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=/ {
+            sub(/^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=[[:space:]]*/, "");
+            gsub(/["'"'"']/, "");
+            print $1;
+            exit;
+        }' "$dir/.env")"
+    fi
+    
+    if [[ -z "$name" && "$cfile" != "-" && -f "$dir/$cfile" ]]; then
+        name="$(awk '/^name:[[:space:]]*/ {
+            sub(/^name:[[:space:]]*/, "");
+            gsub(/["'"'"']/, "");
+            print $1;
+            exit;
+        }' "$dir/$cfile")"
+    fi
+    
+    if [[ -z "$name" ]]; then
+        name="$(basename "$dir")"
+    fi
+    
+    name="${name,,}"
+    echo "${name//[^a-z0-9_-]/}"
+}
+
 resolve_compose_files() {
     local dir="$1"
     local folder="$2"
+    local action="${3:-}"
     DC_FILE_ARGS=()
     local found_any_custom=false
     
@@ -354,9 +481,18 @@ resolve_compose_files() {
         if $found_any_custom; then
             echo -e "${CYAN}  [INFO]${NC} Compose files detected: ${display_files[*]}"
             return 0
-        else
-            echo -e "${CYAN}  [INFO]${NC} None of the requested files were found. Falling back to default."
         fi
+
+        case "$action" in
+            stop|recreate|force-recreate|delete)
+                echo -e "${RED}  [ERROR]${NC} None of the requested compose files (${CUSTOM_COMPOSE_FILES_RAW[*]}) were found in '${folder}'. Refusing to fall back to default for '${action}'."
+                return 1
+                ;;
+            *)
+                echo -e "${CYAN}  [INFO]${NC} None of the requested compose files were found. Falling back to the default Compose file."
+                return 0
+                ;;
+        esac
     fi
 
     local canon_file=""
@@ -420,13 +556,12 @@ list_available_apps() {
         local apps=()
         local excluded_apps=()
         while IFS= read -r -d '' d; do
-            local name
-            name="$(basename "$d")"
-            
+            local folder_name
+            folder_name="$(basename "$d")"
             local valid=false
             if [[ ${#explicit_apps[@]} -gt 0 ]]; then
                 for e_app in "${explicit_apps[@]}"; do
-                    if [[ "$e_app" == "$name" ]]; then
+                    if [[ "$e_app" == "$folder_name" ]]; then
                         valid=true
                         break
                     fi
@@ -445,10 +580,10 @@ list_available_apps() {
                 esac
             fi
             
-            if is_excluded "$name"; then
-                excluded_apps+=("$name")
+            if is_excluded "$folder_name"; then
+                excluded_apps+=("$folder_name")
             elif $valid; then
-                apps+=("$name")
+                apps+=("$folder_name")
             fi
         done < <(find "$sdir" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
 
@@ -477,19 +612,27 @@ inventory_apps_table() {
     [[ ${#valid_search_dirs[@]} -eq 0 ]] && return
 
     declare -A app_status
+    declare -A app_status_by_wdir
     if docker info >/dev/null 2>&1; then
-        while IFS='|' read -r project state; do
+        while IFS='|' read -r project state wdir; do
             [[ -z "$project" ]] && continue
             if [[ "$state" == "running" ]]; then
                 app_status["$project"]="running"
             elif [[ -z "${app_status["$project"]:-}" ]]; then
-                app_status["$project"]="$state"
+                app_status["$project"]="stopped"
             fi
-        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}' 2>/dev/null)
+            if [[ -n "$wdir" ]]; then
+                if [[ "$state" == "running" ]]; then
+                    app_status_by_wdir["$wdir"]="running"
+                elif [[ -z "${app_status_by_wdir["$wdir"]:-}" ]]; then
+                    app_status_by_wdir["$wdir"]="stopped"
+                fi
+            fi
+        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
     fi
 
     (
-        echo "APP|LOCATION|COMPOSE|STATUS"
+        echo "APP|PROJECT|LOCATION|COMPOSE|STATUS"
         for sdir in "${valid_search_dirs[@]}"; do
             local LIST_PRUNE_ARGS=()
             for excl in "${EXCLUDE_DIRS[@]}"; do
@@ -497,21 +640,31 @@ inventory_apps_table() {
             done
 
             while IFS= read -r -d '' d; do
-                local name
-                name="$(basename "$d")"
+                local folder_name
+                folder_name="$(basename "$d")"
                 
                 local cfile
                 cfile="$(get_app_compose_file "$d")"
 
-                if [[ "$cfile" == "-" ]] && ! is_excluded "$name"; then
+                if [[ "$cfile" == "-" ]] && ! is_excluded "$folder_name"; then
                     continue
                 fi
 
+                local eff_name
+                eff_name="$(get_effective_app_name "$d")"
+                
+                local project_col="-"
+                if [[ "$folder_name" != "$eff_name" ]]; then
+                    project_col="$eff_name"
+                fi
+
                 local status="inactive"
-                if is_excluded "$name"; then
+                if is_excluded "$folder_name"; then
                     status="excluded"
-                elif [[ -n "${app_status["$name"]:-}" ]]; then
-                    status="${app_status["$name"]}"
+                elif [[ -n "${app_status["$eff_name"]:-}" ]]; then
+                    status="${app_status["$eff_name"]}"
+                elif [[ -n "${app_status_by_wdir["$d"]:-}" ]]; then
+                    status="${app_status_by_wdir["$d"]}"
                 fi
 
                 local display_path="$d"
@@ -519,7 +672,7 @@ inventory_apps_table() {
                     display_path="~${d#"$HOME"}"
                 fi
 
-                echo "$name|$display_path|$cfile|$status"
+                echo "$folder_name|$project_col|$display_path|$cfile|$status"
                 
             done < <(find "$sdir" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${LIST_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
         done
@@ -530,24 +683,45 @@ print_app_level_details_table() {
     local apps=("$@")
     
     declare -A app_status
+    declare -A app_status_by_wdir
     if docker info >/dev/null 2>&1; then
-        while IFS='|' read -r project state; do
+        while IFS='|' read -r project state wdir; do
             [[ -z "$project" ]] && continue
             if [[ "$state" == "running" ]]; then
                 app_status["$project"]="running"
             elif [[ -z "${app_status["$project"]:-}" ]]; then
                 app_status["$project"]="stopped"
             fi
-        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}' 2>/dev/null)
+            if [[ -n "$wdir" ]]; then
+                if [[ "$state" == "running" ]]; then
+                    app_status_by_wdir["$wdir"]="running"
+                elif [[ -z "${app_status_by_wdir["$wdir"]:-}" ]]; then
+                    app_status_by_wdir["$wdir"]="stopped"
+                fi
+            fi
+        done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.State}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
     fi
 
     (
-        echo "APP|PATH|COMPOSE FILE|OVERALL STATE"
+        echo "APP|PROJECT|PATH|COMPOSE FILE|OVERALL STATE"
         for app in "${apps[@]}"; do
-            dir="$(find_app_dir "$app")"
+            find_app_dir "$app" 2>/dev/null
+            dir="$FOUND_APP_DIR"
             if [[ -z "$dir" || "$dir" == "DUPLICATE"* ]]; then
                 continue
             fi
+            
+            local folder_name
+            folder_name="$(basename "$dir")"
+            
+            local eff_name
+            eff_name="$(get_effective_app_name "$dir")"
+            
+            local project_col="-"
+            if [[ "$folder_name" != "$eff_name" ]]; then
+                project_col="$eff_name"
+            fi
+            
             display_path="$dir"
             if [[ "$dir" == "$HOME"* ]]; then
                 display_path="~${dir#"$HOME"}"
@@ -555,12 +729,14 @@ print_app_level_details_table() {
             cfile="$(get_app_compose_file "$dir")"
             
             state="inactive"
-            if is_excluded "$app"; then
+            if is_excluded "$folder_name"; then
                 state="excluded"
-            elif [[ -n "${app_status["$app"]:-}" ]]; then
-                state="${app_status["$app"]}"
+            elif [[ -n "${app_status["$eff_name"]:-}" ]]; then
+                state="${app_status["$eff_name"]}"
+            elif [[ -n "${app_status_by_wdir["$dir"]:-}" ]]; then
+                state="${app_status_by_wdir["$dir"]}"
             fi
-            echo "$app|$display_path|$cfile|$state"
+            echo "$folder_name|$project_col|$display_path|$cfile|$state"
         done
     ) | column -t -s '|' | awk 'NR==1{print; gsub(/./, "-"); print} NR>1'
 }
@@ -574,10 +750,11 @@ get_all_apps() {
     done
     [[ ${#valid_search_dirs[@]} -eq 0 ]] && return
 
+    local -A seen_apps=()
     while IFS= read -r -d '' d; do
-        local name
-        name="$(basename "$d")"
-        is_excluded "$name" && continue
+        local folder_name
+        folder_name="$(basename "$d")"
+        is_excluded "$folder_name" && continue
 
         case "$mode" in
             compose)
@@ -590,7 +767,10 @@ get_all_apps() {
                 ;;
         esac
 
-        apps+=("$name")
+        if [[ -z "${seen_apps["$folder_name"]:-}" ]]; then
+            apps+=("$folder_name")
+            seen_apps["$folder_name"]=1
+        fi
     done < <(find "${valid_search_dirs[@]}" -mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}" "${FIND_PRUNE_ARGS[@]}" -type d -print0 2>/dev/null | sort -z)
 
     echo "${apps[@]}"
@@ -616,6 +796,7 @@ usage() {
     echo -e "${BOLD}Actions:${NC}"
     echo -e "  start              Start app containers"
     echo -e "  stop               Stop app containers"
+    echo -e "  kill               Force stop containers (SIGKILL)"
     echo -e "  restart            Restart app containers"
     echo -e "  recreate           Recreate app stack (down + up -d)"
     echo -e "  force-recreate     Forceful recreate (down -t 0 + up -d --force-recreate)"
@@ -826,9 +1007,10 @@ run_compose_action_for_app() {
     local action="$1"
     local folder="$2"
     local dir
-    dir="$(find_app_dir "$folder")"
+    find_app_dir "$folder"
+    dir="$FOUND_APP_DIR"
 
-    if ! resolve_compose_files "$dir" "$folder"; then
+    if ! resolve_compose_files "$dir" "$folder" "$action"; then
         return 1
     fi
 
@@ -844,6 +1026,11 @@ run_compose_action_for_app() {
             echo
             echo -e "${BLUE}  [1/2]${NC} Stopping containers..."
             dc stop || { popd > /dev/null || true; return 1; }
+            ;;
+        kill)
+            echo
+            echo -e "${BLUE}  [1/2]${NC} Killing containers (SIGKILL)..."
+            dc kill || { popd > /dev/null || true; return 1; }
             ;;
         restart)
             echo
@@ -920,7 +1107,7 @@ run_compose_action_for_app() {
     else
         echo -e "${BLUE}  [2/2]${NC} Current service status:"
     fi
-    dc ps || true
+    dc ps -a || true
 
     popd > /dev/null || true
     return 0
@@ -930,8 +1117,9 @@ run_update_action_for_app() {
     local folder="$1"
     local dir
     local rc
-    dir="$(find_app_dir "$folder")"
+    find_app_dir "$folder"
     rc=$?
+    dir="$FOUND_APP_DIR"
 
     if [[ $rc -ne 0 ]]; then
         return 1
@@ -983,7 +1171,7 @@ run_update_action_for_app() {
         fi
     fi
 
-    if ! resolve_compose_files "$dir" "$folder"; then
+    if ! resolve_compose_files "$dir" "$folder" "update"; then
         return 1
     fi
     
@@ -1042,7 +1230,7 @@ run_update_action_for_app() {
 
     echo
     echo -e "${BLUE}  [4/4]${NC} Current service status:"
-    dc ps || true
+    dc ps -a || true
 
     popd > /dev/null || true
     return 0
@@ -1051,13 +1239,14 @@ run_update_action_for_app() {
 run_logs_action_for_app() {
     local folder="$1"
     local dir
-    dir="$(find_app_dir "$folder")"
+    find_app_dir "$folder"
+    dir="$FOUND_APP_DIR"
     
     if [[ ! -d "$dir" ]]; then
         return 1
     fi
 
-    if ! resolve_compose_files "$dir" "$folder"; then
+    if ! resolve_compose_files "$dir" "$folder" "logs"; then
         return 1
     fi
 
@@ -1108,14 +1297,13 @@ run_logs_action_for_app() {
     done
 
     echo -e "${BLUE}  [1/1]${NC} Fetching logs for '${folder}'..."
+    local rc=0
     if [[ -n "$head_lines" ]]; then
-        set +o pipefail
-        dc logs "${dc_args[@]}" | head -n "$head_lines"
-        local rc=$?
-        set -o pipefail
+        (set +o pipefail; dc logs "${dc_args[@]}" | head -n "$head_lines")
+        rc=$?
     else
         dc logs "${dc_args[@]}"
-        local rc=$?
+        rc=$?
     fi
 
     # If the user pressed Ctrl+C to exit a live stream, Docker Compose exits with 130.
@@ -1139,8 +1327,9 @@ process_app() {
     local folder="$2"
     local dir
     local rc
-    dir="$(find_app_dir "$folder")"
+    find_app_dir "$folder"
     rc=$?
+    dir="$FOUND_APP_DIR"
 
     (( TOTAL++ )) || true
     print_section "$action" "$folder"
@@ -1157,7 +1346,7 @@ process_app() {
         return 1
     fi
 
-    if is_excluded "$folder"; then
+    if is_excluded "$(basename "$dir")"; then
         echo -e "${YELLOW}  [SKIP]${NC} '${folder}' is excluded from operations."
         (( SKIPPED++ )) || true
         SKIPPED_APPS+=("$folder")
@@ -1165,37 +1354,14 @@ process_app() {
     fi
 
     case "$action" in
-        start|stop|restart|recreate|force-recreate|delete|pause|unpause|update|logs|debug)
-            local success=false
-            if [[ "$action" == "update" ]]; then
-                if run_update_action_for_app "$folder"; then
-                    success=true
-                fi
-            elif [[ "$action" == "logs" ]]; then
-                if run_logs_action_for_app "$folder"; then
-                    success=true
-                fi
-            elif [[ "$action" == "debug" ]]; then
-                if run_debug_action_for_app "$folder"; then
-                    success=true
-                fi
-            else
-                if run_compose_action_for_app "$action" "$folder"; then
-                    success=true
-                fi
-            fi
-
-            if $success; then
-                echo -e "\n${GREEN}  [DONE]${NC} '${folder}' ${action} completed successfully."
-                (( SUCCESS++ )) || true
-                SUCCESS_APPS+=("$folder")
-                return 0
-            fi
-            echo -e "\n${RED}  [FAIL]${NC} '${action}' failed for '${folder}'."
-            (( FAILED++ )) || true
-            FAILED_APPS+=("$folder")
-            return 1
-            ;;
+        update)
+            run_update_action_for_app "$folder" ;;
+        logs)
+            run_logs_action_for_app "$folder" ;;
+        debug)
+            run_debug_action_for_app "$folder" ;;
+        start|stop|kill|restart|recreate|force-recreate|delete|pause|unpause)
+            run_compose_action_for_app "$action" "$folder" ;;
         *)
             echo -e "${RED}  [ERROR]${NC} Unsupported action '${action}'."
             (( FAILED++ )) || true
@@ -1203,6 +1369,18 @@ process_app() {
             return 1
             ;;
     esac
+    local action_rc=$?
+
+    if [[ $action_rc -eq 0 ]]; then
+        echo -e "\n${GREEN}  [DONE]${NC} '${folder}' ${action} completed successfully."
+        (( SUCCESS++ )) || true
+        SUCCESS_APPS+=("$folder")
+        return 0
+    fi
+    echo -e "\n${RED}  [FAIL]${NC} '${action}' failed for '${folder}'."
+    (( FAILED++ )) || true
+    FAILED_APPS+=("$folder")
+    return 1
 }
 
 parse_target_apps() {
@@ -1274,7 +1452,13 @@ parse_target_apps() {
                     continue
                 fi
             fi
-            requested+=("$arg")
+            if [[ "$arg" == *":"* ]]; then
+                local app_part="${arg%%:*}"
+                local svc_part="${arg#*:}"
+                requested+=("${app_part}:${svc_part}")
+            else
+                requested+=("${arg}")
+            fi
         fi
     done
     
@@ -1298,11 +1482,17 @@ parse_target_apps() {
             user_excludes=("${rest[@]:1}")
         fi
 
+        local -a exclude_dirs_resolved=()
         for excl in "${user_excludes[@]}"; do
-            if [[ -z "$(find_app_dir "${excl%%:*}")" ]]; then
+            find_app_dir "${excl%%:*}"
+            if [[ -z "$FOUND_APP_DIR" ]]; then
                 echo -e "${RED}[ERROR]${NC} except: app '${excl%%:*}' could not be found."
                 return 1
             fi
+            if [[ "$FOUND_APP_DIR" == "DUPLICATE:"* ]]; then
+                return 1
+            fi
+            exclude_dirs_resolved+=("$FOUND_APP_DIR")
         done
 
         read -ra all_apps <<< "$(get_all_apps "$mode")"
@@ -1313,8 +1503,10 @@ parse_target_apps() {
 
         for app in "${all_apps[@]}"; do
             local skip=false
-            for excl in "${user_excludes[@]}"; do
-                [[ "$app" == "$excl" ]] && skip=true && break
+            find_app_dir "$app" 2>/dev/null
+            local app_resolved_dir="$FOUND_APP_DIR"
+            for exc_dir in "${exclude_dirs_resolved[@]}"; do
+                [[ "$app_resolved_dir" == "$exc_dir" ]] && skip=true && break
             done
             $skip || APPS_TO_PROCESS+=("$app")
         done
@@ -1374,7 +1566,7 @@ parse_target_apps() {
 # ── Entry point ───────────────────────────────────────────────────────────────
 # 1. Multicall logic (detect if called as start, stop, etc.)
 COMMAND_NAME="$(basename "$0")"
-SUPPORTED_ACTIONS=("start" "stop" "restart" "recreate" "force-recreate" "frec" "delete" "cleanup" "pause" "unpause" "update" "status" "logs" "debug" "list" "get")
+SUPPORTED_ACTIONS=("start" "stop" "kill" "restart" "recreate" "force-recreate" "frec" "delete" "cleanup" "pause" "unpause" "update" "status" "logs" "debug" "list" "get")
 
 if [[ " ${SUPPORTED_ACTIONS[*]} " =~ \ ${COMMAND_NAME}\  ]]; then
     set -- "$COMMAND_NAME" "$@"
@@ -1382,15 +1574,52 @@ fi
 
 # 2. Universal Install, Config, Uninstall & Self-Update logic
 if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" || "${1:-}" == "self-update" ]]; then
-    if [ "$EUID" -ne 0 ]; then
+    if [[ "$EUID" -ne 0 ]]; then
         echo -e "${RED}[ERROR]${NC} This command must be run with sudo."
         exit 1
     fi
+
+    # [SECURITY] Mitigate TOCTOU vulnerability during installation
+    # If executing from a world-writable temp directory, immediately stage the script
+    # into a root-owned, non-world-writable location to prevent malicious modification
+    # by an unprivileged user during the interactive prompts.
+    if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
+        SCRIPT_SOURCE_PATH="$(realpath "$0")"
+        if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
+            if [[ -z "$DAM_TOCTOU_SECURED" ]]; then
+                old_umask=$(umask)
+                umask 077
+                safe_staged_script="$(mktemp /tmp/dam-install-XXXXXX.tmp)"
+                umask "$old_umask"
+                
+                if ! cat "$SCRIPT_SOURCE_PATH" > "$safe_staged_script"; then
+                    echo -e "${RED}[ERROR]${NC} Failed to stage installer script safely."
+                    rm -f "$safe_staged_script"
+                    exit 1
+                fi
+                
+                chmod 700 "$safe_staged_script"
+                export DAM_TOCTOU_SECURED=1
+                
+                # Re-exec into the root-owned copy so bash reads from the secure file descriptor,
+                # physically closing the Time-of-Check to Time-of-Use window during interactive prompts.
+                exec bash "$safe_staged_script" "$@"
+            else
+                # We are currently running inside the secure staged copy. Set trap to clean ourselves up on exit.
+                trap 'rm -f "$SCRIPT_SOURCE_PATH"' EXIT
+            fi
+        fi
+    fi
     
     if [[ "${1:-}" == "install" && ( "${2:-}" == "--refresh" || "${2:-}" == "refresh" ) ]]; then
-        # Symlink the script instead of copying to ensure edits are globally reflected immediately
-        if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
-            ln -sf "$(realpath "$0")" "/usr/local/bin/docker-app-manager"
+        # Install the script to system bin: copy from temp paths, symlink from persistent paths
+        if [[ -n "${SCRIPT_SOURCE_PATH:-}" ]]; then
+            if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
+                rm -f "/usr/local/bin/docker-app-manager"
+                cp -f "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
+            else
+                ln -sf "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
+            fi
             chmod 755 "/usr/local/bin/docker-app-manager"
         fi
         if [[ -f "$CONFIG_FILE" ]]; then
@@ -1560,7 +1789,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             echo -e "(Default: ${existing_dirs})"
             read -r -p "> " input_dirs
             
-            if [[ -z "$(echo -e "${input_dirs}" | tr -d '[:space:]')" ]]; then
+            if [[ -z "${input_dirs//[[:space:]]/}" ]]; then
                 input_dirs="$existing_dirs"
             fi
             
@@ -1596,7 +1825,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             echo -e "(Default: ${existing_excludes})"
         fi
         read -r -p "> " input_excludes
-        if [[ -z "$(echo -e "${input_excludes}" | tr -d '[:space:]')" && -n "$existing_excludes" ]]; then
+        if [[ -z "${input_excludes//[[:space:]]/}" && -n "$existing_excludes" ]]; then
             input_excludes="$existing_excludes"
         elif [[ "${input_excludes,,}" == "none" ]]; then
             input_excludes=""
@@ -1613,7 +1842,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             fi
             read -r -p "> " input_cmd_name
             
-            input_cmd_name="$(echo -e "${input_cmd_name}" | tr -d '[:space:]')"
+            input_cmd_name="${input_cmd_name//[[:space:]]/}"
             
             if [[ "$input_cmd_name" == "none" ]]; then
                 input_cmd_name=""
@@ -1745,9 +1974,18 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
     if [[ "$1" == "install" ]]; then
         echo -e "${YELLOW}Installing core system files...${NC}"
         
-        # Symlink the script to the system bin to enforce DRY
-        if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
-            ln -sf "$(realpath "$0")" "/usr/local/bin/docker-app-manager"
+        # Install the script to system bin: copy from temp paths to avoid dangling
+        # symlinks (e.g. quick-install one-liner), symlink from persistent paths
+        # so edits are globally reflected immediately.
+        if [[ -n "${SCRIPT_SOURCE_PATH:-}" ]]; then
+            if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
+                rm -f "/usr/local/bin/docker-app-manager"
+                cp -f "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
+                echo -e "  ${CYAN}[INFO]${NC} Copied script to /usr/local/bin (source is in a temp directory)."
+            else
+                ln -sf "$SCRIPT_SOURCE_PATH" "/usr/local/bin/docker-app-manager"
+                echo -e "  ${CYAN}[INFO]${NC} Symlinked script from ${SCRIPT_SOURCE_PATH}."
+            fi
             chmod 755 "/usr/local/bin/docker-app-manager"
         fi
     fi
@@ -1801,13 +2039,13 @@ done
 ACTION="$1"
 shift
 
-# Normalize frec to force-recreate
+# Normalize aliases
 if [[ "$ACTION" == "frec" ]]; then
     ACTION="force-recreate"
 fi
 
 case "$ACTION" in
-    (start|stop|restart|recreate|force-recreate|delete|pause|unpause|update|status|logs|debug|list|get)
+    (start|stop|kill|restart|recreate|force-recreate|delete|pause|unpause|update|status|logs|debug|list|get)
         if ! docker_ready; then
             exit 1
         fi
@@ -1845,20 +2083,29 @@ case "$ACTION" in
                 echo -e "${CYAN}Gathering details for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
                 all_containers=()
                 
-                declare -A target_apps
+                declare -A target_eff_names
+                declare -A resolved_dirs
                 for app in "${APPS_TO_PROCESS[@]}"; do
-                    target_apps["$app"]=1
                     (( TOTAL++ )) || true
+                    find_app_dir "$app" 2>/dev/null
+                    dir="$FOUND_APP_DIR"
+                    if [[ -d "$dir" ]]; then
+                        eff_name="$(get_effective_app_name "$dir")"
+                        target_eff_names["$eff_name"]="$app"
+                        resolved_dirs["$app"]="$dir"
+                    elif [[ "$dir" == "DUPLICATE:"* ]]; then
+                        resolved_dirs["$app"]="DUPLICATE"
+                    fi
                 done
                 
                 while IFS='|' read -r cid project wdir; do
                     [[ -z "$cid" ]] && continue
                     app_name=""
-                    if [[ -n "$project" ]] && [[ -n "${target_apps["$project"]:-}" ]]; then
+                    if [[ -n "$project" ]] && [[ -n "${target_eff_names["$project"]:-}" ]]; then
                         app_name="$project"
                     elif [[ -n "$wdir" ]]; then
-                        bname=$(basename "$wdir")
-                        if [[ -n "${target_apps["$bname"]:-}" ]]; then
+                        bname=$(get_effective_app_name "$wdir")
+                        if [[ -n "${target_eff_names["$bname"]:-}" ]]; then
                             app_name="$bname"
                         fi
                     fi
@@ -1867,6 +2114,29 @@ case "$ACTION" in
                     fi
                 done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.ID}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
                 
+                for app in "${APPS_TO_PROCESS[@]}"; do
+                    if is_excluded "$app"; then
+                        (( SKIPPED++ )) || true
+                        SKIPPED_APPS+=("$app")
+                        continue
+                    fi
+                    
+                    dir="${resolved_dirs["$app"]:-}"
+                    
+                    if [[ "$dir" == "DUPLICATE" ]]; then
+                        echo -e "${RED}  [ERROR]${NC} Multiple matching apps found for '${app}'"
+                        (( FAILED++ )) || true
+                        FAILED_APPS+=("$app")
+                    elif [[ -z "$dir" ]]; then
+                        echo -e "${RED}  [ERROR]${NC} App '${app}' not found in any search directory or missing compose file."
+                        (( FAILED++ )) || true
+                        FAILED_APPS+=("$app")
+                    else
+                        (( SUCCESS++ )) || true
+                        SUCCESS_APPS+=("$app")
+                    fi
+                done
+
                 echo
                 if [[ ${#all_containers[@]} -eq 0 ]]; then
                     echo -e "${YELLOW}No containers found for the requested apps.${NC}"
@@ -1878,9 +2148,18 @@ case "$ACTION" in
                     echo -e "${BOLD}2. Container Level Details:${NC}"
                     (
                             echo "APP|SERVICE|CONTAINER|IMAGE|STATE|HEALTH|PORTS"
-                        docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Ports}}' | \
-                        while IFS='|' read -r project svc name image state status ports; do
-                            if [[ -z "${target_apps["$project"]:-}" ]]; then continue; fi
+                        docker ps -a --filter "label=com.docker.compose.project" --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}|{{.Label "com.docker.compose.service"}}|{{.Names}}|{{.Image}}|{{.State}}|{{.Status}}|{{.Ports}}' | \
+                        while IFS='|' read -r project wdir svc name image state status ports; do
+                            app_name=""
+                            if [[ -n "$project" ]] && [[ -n "${target_eff_names["$project"]:-}" ]]; then
+                                app_name="$project"
+                            elif [[ -n "$wdir" ]]; then
+                                bname=$(get_effective_app_name "$wdir")
+                                if [[ -n "${target_eff_names["$bname"]:-}" ]]; then
+                                    app_name="$bname"
+                                fi
+                            fi
+                            if [[ -z "$app_name" ]]; then continue; fi
                             
                             health="-"
                             if [[ "$status" == *"healthy"* ]]; then health="healthy"; fi
@@ -1931,6 +2210,12 @@ case "$ACTION" in
                 target_service="${raw_app#*:}"
                 [[ "$target_service" == "$raw_app" ]] && target_service=""
                 
+                find_app_dir "$app_name"
+                dir="$FOUND_APP_DIR"
+                if [[ -d "$dir" ]]; then
+                    app_name="$(get_effective_app_name "$dir")"
+                fi
+                
                 filter_args=("-f" "label=com.docker.compose.project=$app_name")
                 if [[ -n "$target_service" ]]; then
                     filter_args+=("-f" "label=com.docker.compose.service=$target_service")
@@ -1949,10 +2234,10 @@ case "$ACTION" in
                             fi
                             ;;
                         iid|image-id)
-                            if [[ "${GET_FULL_SHA:-false}" == "true" ]]; then
-                                val=$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null | sed 's/sha256://')
-                            else
-                                val=$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null | sed 's/sha256://' | cut -c1-12)
+                            val=$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null)
+                            val="${val#sha256:}"
+                            if [[ "${GET_FULL_SHA:-false}" != "true" ]]; then
+                                val="${val:0:12}"
                             fi
                             ;;
                         vol|volume|volumes)
@@ -1991,29 +2276,34 @@ case "$ACTION" in
             echo -e "${CYAN}Gathering status for ${#APPS_TO_PROCESS[@]} app(s)...${NC}"
             all_containers=()
             
-            declare -A target_apps
+            declare -A target_eff_names
+            declare -A resolved_dirs
             for app in "${APPS_TO_PROCESS[@]}"; do
-                target_apps["$app"]=1
                 (( TOTAL++ )) || true
+                find_app_dir "$app"
+                dir="$FOUND_APP_DIR"
+                if [[ -d "$dir" ]]; then
+                    eff_name="$(get_effective_app_name "$dir")"
+                    target_eff_names["$eff_name"]="$app"
+                    resolved_dirs["$app"]="$dir"
+                elif [[ "$dir" == "DUPLICATE:"* ]]; then
+                    resolved_dirs["$app"]="DUPLICATE"
+                fi
             done
             
-            declare -A found_dirs
             while IFS='|' read -r cid project wdir; do
                 [[ -z "$cid" ]] && continue
                 app_name=""
-                if [[ -n "$project" ]] && [[ -n "${target_apps["$project"]:-}" ]]; then
+                if [[ -n "$project" ]] && [[ -n "${target_eff_names["$project"]:-}" ]]; then
                     app_name="$project"
                 elif [[ -n "$wdir" ]]; then
-                    bname=$(basename "$wdir")
-                    if [[ -n "${target_apps["$bname"]:-}" ]]; then
+                    bname=$(get_effective_app_name "$wdir")
+                    if [[ -n "${target_eff_names["$bname"]:-}" ]]; then
                         app_name="$bname"
                     fi
                 fi
                 if [[ -n "$app_name" ]]; then
                     all_containers+=("$cid")
-                    if [[ -n "$wdir" && -z "${found_dirs["$app_name"]:-}" ]]; then
-                        found_dirs["$app_name"]="$wdir"
-                    fi
                 fi
             done < <(docker ps -a --filter "label=com.docker.compose.project" --format '{{.ID}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null)
             
@@ -2024,10 +2314,7 @@ case "$ACTION" in
                     continue
                 fi
                 
-                dir="${found_dirs["$app"]:-}"
-                if [[ -z "$dir" ]]; then
-                    dir="$(find_app_dir "$app")"
-                fi
+                dir="${resolved_dirs["$app"]:-}"
                 
                 if [[ "$dir" == "DUPLICATE" ]]; then
                     echo -e "${RED}  [ERROR]${NC} Multiple matching apps found for '${app}'"
@@ -2053,7 +2340,7 @@ case "$ACTION" in
                 done
                 echo -e "${BLUE}  [1/2]${NC} Current service status:"
                 # Format exactly like docker compose ps, but inject the App name for absolute clarity!
-                docker ps -a "${filter_args[@]}" --format 'table {{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Ports}}' | sed '1s/com.docker.compose.project/APP/' | sed '1s/com.docker.compose.service/SERVICE/'
+                docker ps -a "${filter_args[@]}" --format 'table {{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Ports}}' | sed '1{ s/com.docker.compose.project/APP/; s/com.docker.compose.service/SERVICE/; }'
                 echo
                 echo -e "${BLUE}  [2/2]${NC} Real-time resource usage:"
                 docker stats --no-stream "${all_containers[@]}" || true

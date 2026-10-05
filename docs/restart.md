@@ -36,6 +36,10 @@ docker compose ps
 
 After the restart operation completes, DAM prints the current status of the app's services to confirm that all containers have successfully started back up.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `restart` logs an informational message and falls back to that app's default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram
@@ -67,11 +71,11 @@ After the restart operation completes, DAM prints the current status of the app'
 dkr restart <app-name>
 
 # Restart multiple specific apps
-dkr restart <app-name> <app-name-2> <proxy-app>
+dkr restart <app-name> <app-name-2> <app3>
 
 # Restart all available apps
 dkr restart all
 
-# Restart all apps except the reverse proxy and portainer
-dkr restart all except <proxy-app> portainer
+# Restart all apps except specific apps
+dkr restart all except <app3> <app4>
 ```

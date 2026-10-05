@@ -62,6 +62,10 @@ docker compose ps
 
 DAM displays the resulting service state and records the app as successful only when both the teardown and startup commands succeed.
 
+## Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `force-recreate` fails that app instead of tearing down and rebuilding the stack described by its default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ## Selection, Failures, and Summary
 
 DAM processes selected apps sequentially. An app that cannot be found, resolves to more than one directory, is excluded, or fails one of the Compose operations is recorded in the final summary. A failure for one app does not prevent later selected apps from being attempted. DAM exits nonzero if any app failed.
@@ -80,7 +84,7 @@ dkr force-recreate immich
 dkr frec <app-name>
 
 # Replace all targetable stacks except infrastructure that should remain up.
-dkr force-recreate all except <proxy-app> portainer
+dkr force-recreate all except <app3> <app4>
 ```
 
 ## What It Does Not Do
@@ -89,4 +93,3 @@ dkr force-recreate all except <proxy-app> portainer
 - It does not remove named volumes or service images.
 - It does not target one service within a project; every Compose service in the application directory is affected.
 - It does not support Swarm or Kubernetes.
-

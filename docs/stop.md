@@ -34,6 +34,10 @@ docker compose ps
 
 After the stop operation completes, DAM prints the current status of the app's services to confirm that all containers have successfully exited.
 
+### Explicit Compose Files
+
+Append `using <file1> <file2>...` to select Compose files explicitly. If none of the requested files resolve for an app, `stop` fails that app instead of stopping the stack described by its default Compose file. If one or more resolve, DAM uses only the resolved files and warns about any misses.
+
 ---
 
 ## State Diagram
@@ -65,11 +69,11 @@ After the stop operation completes, DAM prints the current status of the app's s
 dkr stop <app-name>
 
 # Stop multiple specific apps
-dkr stop <app-name> <app-name-2> <proxy-app>
+dkr stop <app-name> <app-name-2> <app3>
 
 # Stop all available apps
 dkr stop all
 
-# Stop all apps except the reverse proxy and portainer
-dkr stop all except <proxy-app> portainer
+# Stop all apps except specific apps
+dkr stop all except <app3> <app4>
 ```

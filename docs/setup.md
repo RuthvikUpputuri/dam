@@ -47,7 +47,7 @@ DAM configures how you invoke it globally.
 
 ### Step 6: System Integration
 1. DAM saves your choices to `/etc/docker-app-manager.conf`.
-2. It creates a master symlink: `/usr/local/bin/docker-app-manager` pointing to the actual location of your `dam.sh` file. (This ensures that edits to the script are immediately live globally).
+2. It installs `/usr/local/bin/docker-app-manager`: a temporary source under `/tmp` or `/var/tmp` is copied there, while a persistent source is linked so its edits are immediately live globally.
 3. It cleans up any old, orphaned symlinks if you changed your command name.
 4. It creates the new command symlinks based on your choices. Note that `frec` is created as an alias for `force-recreate`.
 
@@ -68,7 +68,7 @@ sudo ./dam.sh install refresh
 *(Note: If you already have DAM installed globally, you can also run `sudo dkr install refresh`)*
 
 ### Behavior
-1. Re-establishes the core `/usr/local/bin/docker-app-manager` symlink.
+1. Ensures a directly invoked source is installed as the core executable, copying a temporary source and linking a persistent one; an existing global core executable is left intact.
 2. Sources `/etc/docker-app-manager.conf`.
 3. Force-removes all currently managed symlinks in `/usr/local/bin`.
 4. Re-creates the symlinks based strictly on the `CUSTOM_CMD_NAME` defined in the config.
@@ -78,9 +78,9 @@ sudo ./dam.sh install refresh
 
 ## File Locations
 
-- **Main Script Path**: The original location where you downloaded `dam.sh`. Do not delete this file, as the system relies on it via symlink.
+- **Main Script Path**: For a persistent-source installation, do not delete the original `dam.sh`, because the global core executable links to it. The temporary script used by Quick Install can be deleted after setup.
 - **Configuration File**: `/etc/docker-app-manager.conf`
-- **Global Binary**: `/usr/local/bin/docker-app-manager`
+- **Global Binary**: `/usr/local/bin/docker-app-manager`, a copied executable for temporary sources or a symlink for persistent sources
 - **User Commands**: `/usr/local/bin/<your-custom-name>` or `/usr/local/bin/start`, etc.
 
 ---

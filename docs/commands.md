@@ -30,7 +30,7 @@ DAM prefers `docker compose` and falls back to `docker-compose`. It manages one 
 
 ## Application Selection
 
-The standard selector is used by `start`, `stop`, `restart`, `recreate`, `force-recreate`, `delete`, `pause`, `unpause`, `update`, `status`, `logs`, `debug`, `list`, and `get`.
+The standard selector is used by `start`, `stop`, `kill`, `restart`, `recreate`, `force-recreate`, `delete`, `pause`, `unpause`, `update`, `status`, `logs`, `debug`, `list`, and `get`.
 
 | Pattern | Meaning |
 | :-- | :-- |
@@ -51,6 +51,7 @@ Every non-`get` lifecycle command prints a per-app section and a final summary o
 | :-- | :-- | :-- |
 | `start` | `up -d` | Creates containers when needed; it is not Compose's `start` subcommand. |
 | `stop` | `stop` | Stops project containers without removing them. |
+| `kill` | `kill` | Force stops project containers immediately (SIGKILL) without removing them. |
 | `restart` | `restart` | Restarts existing containers in place. |
 | `recreate` | `down --remove-orphans`, then `up -d` | Gracefully replaces the whole stack. |
 | `force-recreate`, `frec` | `down --remove-orphans -t 0`, then `up -d --force-recreate` | Replaces the whole stack with zero shutdown timeout. |
@@ -61,7 +62,7 @@ Every non-`get` lifecycle command prints a per-app section and a final summary o
 
 ### Default Compose Files
 
-Each Compose action executes inside the resolved application directory. By default, Docker Compose natively searches for a primary file to execute. Whenever DAM refers to falling back to the "default file", it means relying on this native Docker Compose behavior, which searches in this strict priority order:
+Each Compose action executes inside the resolved application directory. Without the `using` modifier, DAM uses Docker Compose's default primary-file behavior, which searches in this strict priority order:
 
 1. `compose.yaml`
 2. `compose.yml`
@@ -89,16 +90,16 @@ DAM employs an intelligent shorthand resolution algorithm for every file request
 > [!NOTE]
 > Because the bare filename without a prefix takes precedence for a given extension, if an app has both `<name>.yml` and `compose.<name>.yml` and you specify `using <name>`, **`<name>.yml` will be selected**. To target the prefixed file, you must be explicit (e.g., `using compose.<name>`).
 
-If **at least one** custom file is matched using this logic, DAM strictly uses the found files and emits a warning for any requested file that was not found for that app. If **none** of the requested custom files can be resolved in an app, DAM will fall back to the default file for that app. At the very end of the run, DAM outputs a global summary listing any file shorthands that were not matched in *any* processed app, as well as a list of specific apps that were missing partially matched files.
+If **at least one** custom file is matched using this logic, DAM strictly uses the found files and emits a warning for any requested file that was not found for that app. If **none** of the requested custom files can be resolved in an app, `stop`, `kill`, `recreate`, `force-recreate`, and `delete` report an error rather than falling back to the default Compose file. Other actions retain the default-file fallback. At the very end of the run, DAM outputs a global summary listing any file shorthands that were not matched in *any* processed app, as well as a list of specific apps that were missing partially matched files.
 
-Read the dedicated pages for [start](start.md), [stop](stop.md), [restart](restart.md), [recreate](recreate.md), [force-recreate](force-recreate.md), [pause](pause.md), [unpause](unpause.md), [delete](delete.md), and [update](update.md).
+Read the dedicated pages for [start](start.md), [stop](stop.md), [kill](kill.md), [restart](restart.md), [recreate](recreate.md), [force-recreate](force-recreate.md), [pause](pause.md), [unpause](unpause.md), [delete](delete.md), and [update](update.md).
 
 ## Information and Output Actions
 
 | Action | Purpose | Important behavior |
 | :-- | :-- | :-- |
 | `status` | Multi-project container state and one-shot resource usage | Uses Compose project labels with `docker ps -a`, then `docker stats --no-stream`. |
-| `list` | Application inventory or selected-app details | No arguments perform a fast global inventory scan; `list all` is a targeted query and omits excluded apps. |
+| `list` | Application inventory or selected-app details | No arguments perform a fast global inventory scan (columns: APP, PROJECT, LOCATION, COMPOSE, STATUS); `list all` is a targeted query and omits excluded apps (columns: APP, PROJECT, PATH, COMPOSE FILE, OVERALL STATE). |
 | `get` | Scriptable container metadata | Requires one resource such as `cid`, `iid`, `vol`, `mnt`, `net`, `port`, `state`, `health`, or `info`. Supports `app:service` and `full` IDs. |
 | `logs` | Project-wide Compose logs | Translates human-friendly keywords such as `last 100`, `live`, `since 30m`, and `time`. Live logs are blocked for `all`. |
 | `debug` | Placeholder | Prints a TODO per resolvable app; no diagnostics run yet. |
@@ -125,7 +126,7 @@ The following commands require `sudo` because they modify `/etc` or `/usr/local/
 
 | Command | Behavior |
 | :-- | :-- |
-| `install` | Runs the interactive setup and creates the core and command symlinks. |
+| `install` | Runs the interactive setup, installs the core executable (copying a temporary source or linking a persistent one), and creates command symlinks. |
 | `install refresh` | Rebuilds managed command symlinks non-interactively from the existing configuration. |
 | `config` | Reruns the configuration wizard and updates command symlinks. |
 | `self-update` | Downloads the HTTPS `UPDATE_URL`, validates basic script syntax and optional checksum, replaces the installed binary, then refreshes links. |

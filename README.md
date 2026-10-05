@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge" alt="Version 1.1.0">
+  <img src="https://img.shields.io/github/v/release/RuthvikUpputuri/dam?style=for-the-badge&color=blue&label=version" alt="Latest Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/bash-4.4%2B-orange?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash 4.4+">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  Built for sysadmins, hobbyists, and self-hosters who love the CLI but hate <code>cd</code>-ing into every stack folder.
+  Built for sysadmins, hobbyists, and self-hosters who love the CLI but hate <code>cd</code>-ing into every stack folder just to manage apps.
 </p>
 
 <p align="center">
@@ -89,14 +89,14 @@ Instead of:
 ```bash
 cd ~/stacks/<app2> && docker compose up -d
 cd ~/stacks/<app-name> && docker compose pull && docker compose up -d
-cd ~/stacks/<proxy-app> && docker compose restart
+cd ~/stacks/<app3> && docker compose restart
 # …and so on for every app
 ```
 
 you can do:
 
 ```bash
-start all except <proxy-app>
+start all except <app3>
 update <app-name> <app-name-2>
 restart <app2>
 cleanup vol
@@ -115,7 +115,7 @@ DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compo
 | Problem | DAM solution |
 | :------ | :----------- |
 | Constantly `cd` into stack directories | Run commands from anywhere by app name |
-| Updating 10+ apps one by one | `update all` or `update all except <proxy-app>` |
+| Updating 10+ apps one by one | `update all` or `update all except <app3>` |
 | Forgetting which apps exist | Built-in listing + real-time status |
 | Accidental volume/network deletes | Explicit confirmations + opt-in cleanup modes |
 | Different compose file names | Auto-detects `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` |
@@ -128,7 +128,7 @@ It is intentionally focused on **one compose project per folder** which is the p
 
 ## Features
 
-- **Bulk lifecycle control** - start, stop, restart, recreate, force-recreate, pause, unpause, delete
+- **Bulk lifecycle control** - start, stop, kill, restart, recreate, force-recreate, pause, unpause, delete
 - **Smart app selection**
   - `all`
   - `all except app1 app2`
@@ -155,6 +155,7 @@ It is intentionally focused on **one compose project per folder** which is the p
 | **Bash 4.4+** | Required (empty-array expansion under `set -u`) |
 | **Docker** | Daemon must be running and accessible by your user |
 | **Docker Compose** | Either the v2 plugin (`docker compose`) or standalone `docker-compose` |
+| **column** | Part of `util-linux`; used by `list`, `get`, and `status` for table formatting |
 | **Linux** (primary) | Tested on common Linux distributions; other Unix-like systems may work |
 
 Check versions:
@@ -179,7 +180,7 @@ The installer will:
 - Let you set folder names to always exclude
 - Let you choose a global command name (default: `dkr`, or `none` for raw commands like `start` / `stop`)
 - Configure whether custom `update*.sh` scripts run automatically or require confirmation
-- Symlink the script to `/usr/local/bin/docker-app-manager` and create command symlinks
+- Copy the temporary quick-install download to `/usr/local/bin/docker-app-manager` and create command symlinks
 - Write configuration to `/etc/docker-app-manager.conf`
 
 After installation you can use the commands from anywhere.
@@ -190,7 +191,7 @@ You can run the script without installing:
 
 ```bash
 ./dam.sh start <app2>
-./dam.sh update all except <proxy-app>
+./dam.sh update all except <app3>
 ./dam.sh cleanup
 ```
 
@@ -233,6 +234,7 @@ The same selection syntax works for almost every action:
 Optional modifiers:
 
 - Append `using <file1> <file2>...` to explicitly specify which Compose files to use (e.g. `using compose.yaml compose.override.yaml`). It automatically resolves shorthand names (e.g., `dev` to `dev.yaml` or `compose.dev.yaml`).
+  - If none of the requested files resolve, `stop`, `recreate`, `force-recreate`, and `delete` fail rather than using the default Compose file. Other Compose actions fall back to their default Compose file. If at least one file resolves, DAM runs with only the matched files and warns about the missing ones.
 - Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** to trigger extended cleanup.
 - Use `-y` or `--yes` to skip confirmation prompts (especially important for `delete all` and volume/image prunes).
 
@@ -241,14 +243,14 @@ Optional modifiers:
 ### Everyday Examples
 
 ```bash
-# Start everything except the reverse proxy
-start all except <proxy-app>
+# Start everything except specific apps
+start all except <app3>
 
 # Restart a couple of apps
 restart <app2> <app-name>
 
 # Pull latest images and recreate
-update <app-name> <app-name-2> <proxy-app>
+update <app-name> <app-name-2> <app3>
 
 # Start an app using specific compose files (resolves 'dev' to 'dev.yaml' or 'compose.dev.yaml', etc.)
 start <app-name> using compose dev prod
@@ -257,9 +259,9 @@ start <app-name> using compose dev prod
 recreate <app4>
 
 # Force recreate (immediate kill + --force-recreate)
-force-recreate portainer
+force-recreate <app3>
 # or the short alias:
-frec portainer
+frec <app3>
 
 # Remove an app stack (containers + networks); volumes kept by default
 delete <app4>
@@ -293,7 +295,7 @@ cleanup all -y
 
 # See what is running
 status all
-status <app-name> <proxy-app>
+status <app-name> <app3>
 ```
 
 ---
@@ -308,6 +310,7 @@ status <app-name> <proxy-app>
 | :------ | :-------------------- |
 | `start` | `docker compose up -d` (creates + starts containers) |
 | `stop` | `docker compose stop` |
+| `kill` | `docker compose kill` |
 | `restart` | `docker compose restart` |
 | `recreate` | `docker compose down --remove-orphans` → `docker compose up -d` |
 | `force-recreate` / `frec` | `docker compose down --remove-orphans -t 0` → `docker compose up -d --force-recreate` |
@@ -450,6 +453,8 @@ Installed configuration lives at `/etc/docker-app-manager.conf` - a Bash-sourcea
 
 🚨 **App name** = basename of the directory. If multiple directories share the same name, DAM reports an error and refuses to guess.
 
+*(Note: If you explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it. The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name. `list` shows the folder name in APP and the custom name in PROJECT; `status`, `get` and the container state use the effective project name to find containers.)*
+
 > 📖 **Full details:** [docs/application-discovery.md](docs/application-discovery.md)
 
 ### Compose Detection
@@ -526,7 +531,7 @@ Uses the built-in default search paths, so you must specify your stacks path dir
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-dkr update all except <proxy-app>
+dkr update all except <app3>
 dkr cleanup -y
 ```
 

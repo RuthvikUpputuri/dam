@@ -9,6 +9,7 @@
 | **Docker Compose** | v2 plugin (`docker compose`) or standalone (`docker-compose`) | DAM auto-detects which is available |
 | **Linux** | Primary target | Tested on common distributions; other Unix-like systems may work |
 | **curl** | Any | Required only for `self-update` |
+| **column** | Any (part of `util-linux`) | Required by `list`, `get`, and `status` for table formatting |
 
 DAM explicitly checks these at startup:
 
@@ -45,13 +46,13 @@ The installer will:
 2. **Ask for excluded folder names** - directory names to always ignore (defaults: `recovered`, `recovered-configs`, `unused`)
 3. **Ask for a command name** - how you'll invoke DAM globally:
    - Enter a name like `dkr` (default) or `dam` → commands become `dkr start …`, `dam update …`, etc.
-   - Enter `none` → installs raw commands: `start`, `stop`, `update`, … directly (the installer checks for system conflicts first)
+   - Enter `none` → installs raw commands: `start`, `stop`, `kill`, `update`, … directly (the installer checks for system conflicts first)
 4. **Ask about custom update scripts** - whether `update*.sh` scripts should be allowed to run automatically without prompting. If "No", DAM will interactively ask you for permission each time it finds one.
 5. **Optionally set** a self-update SHA-256 hash. *Note: It is only there for highly strict security environments where administrators want to manually approve and verify every single update before allowing the script to pull it. For normal use, leaving it blank is the best approach.*
 
 After completion:
 
-- The script is **symlinked** to `/usr/local/bin/docker-app-manager`
+- The temporary quick-install script is **copied** to `/usr/local/bin/docker-app-manager`, so deleting `/tmp/dam.sh` is safe
 - Command symlinks are created based on your choice
 - Configuration is saved to `/etc/docker-app-manager.conf`
 
@@ -70,7 +71,7 @@ This is identical to Method 1 but starts from a local clone. The installer symli
 ```bash
 chmod +x dam.sh
 ./dam.sh start <app-name>
-./dam.sh update all except <proxy-app>
+./dam.sh update all except <app3>
 ./dam.sh cleanup
 ```
 
@@ -113,7 +114,7 @@ Or, for update operations, an `update*.sh` script.
 
 ```
 /opt/stacks/
-├── <proxy-app>/
+├── <app3>/
 │   └── compose.yaml
 ├── <app-name>/
 │   └── docker-compose.yml
@@ -126,7 +127,7 @@ Or, for update operations, an `update*.sh` script.
     └── old-app/
 ```
 
-The **directory basename** becomes the app name used in DAM commands. In this example: `<proxy-app>`, `<app-name>`, `<app2>`, `<app-name>`.
+The **directory basename** becomes the app name used in DAM commands. In this example: `<app3>`, `<app-name>`, `<app2>`, `<app-name>`.
 
 ---
 
@@ -134,7 +135,7 @@ The **directory basename** becomes the app name used in DAM commands. In this ex
 
 | File/Path | Purpose |
 | :-------- | :------ |
-| `/usr/local/bin/docker-app-manager` | Symlink to your `dam.sh` script |
+| `/usr/local/bin/docker-app-manager` | Copy of a `/tmp` or `/var/tmp` source; otherwise a symlink to your `dam.sh` script |
 | `/usr/local/bin/<cmd>` | Symlink(s) to `docker-app-manager` (your chosen command name or raw action names) |
 | `/etc/docker-app-manager.conf` | Bash-sourceable configuration file |
 
@@ -228,10 +229,10 @@ EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "templates" "archive")
 ```
 
 **Notes:**
-- Exclusion is by **basename only** - a directory named `recovered` at any depth under any search root will be excluded
+- Exclusion is by **basename only and case-insensitive** - a directory named `recovered` at any depth under any search root will be excluded
 - Excluded apps appear in `list` output with an "excluded" status marker
 - Excluded apps are skipped during `all` operations with a `[SKIP]` message
-- The `find` command uses `-name "$excl" -prune` which prevents descending into excluded directories at all
+- The `find` command uses `-iname "$excl" -prune` which prevents descending into excluded directories at all
 
 ---
 
@@ -250,7 +251,7 @@ EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "templates" "archive")
 | Value | Resulting Commands | Symlinks Created |
 | :---- | :----------------- | :--------------- |
 | `"dkr"` (or any name) | `dkr start ...`, `dkr update ...` | `/usr/local/bin/dkr` → `/usr/local/bin/docker-app-manager` |
-| `""` (empty / `none`) | `start ...`, `stop ...`, `update ...` | One symlink per action in `/usr/local/bin/` |
+| `""` (empty / `none`) | `start ...`, `stop ...`, `kill ...`, `update ...` | One symlink per action in `/usr/local/bin/` |
 
 **Conflict detection:**
 - During install, if raw mode is selected, the installer checks every supported action name against `command -v` to detect conflicts with existing system commands

@@ -18,7 +18,7 @@ Validates that the directory contains a Compose file (or update script)
 Uses the directory as the working directory for Docker Compose commands
 ```
 
-The **directory basename** is the application name. The **directory itself** is the Compose project context.
+By default, the **directory basename** is the application name. The **directory itself** is the Compose project context.
 
 ---
 
@@ -56,16 +56,17 @@ DAM uses `find` with `-mindepth 1 -maxdepth 5`. This means:
 - Subdirectories at depth 1 through 5 under each search root are examined
 - The search root itself is not treated as an app
 - Deeply nested directories (depth > 5) are not discovered unless configured in config file via the `MAX_SEARCH_DEPTH` variable
+- Every examined directory that contains a qualifying Compose file is treated as a separate app. For example, `beta/old/compose.yaml` registers `old` as an app as well as any qualifying `beta` directory. If a directory should not be used as an app, add its basename to `EXCLUDE_DIRS` in `/etc/docker-app-manager.conf` (or configure it through `sudo <cmd> config`).
 
 ### Directory Exclusion
 
-Directories whose **basename** matches any entry in `EXCLUDE_DIRS` are pruned from the search:
+Directories whose **basename** matches any entry in `EXCLUDE_DIRS`, case-insensitively, are pruned from the search:
 
 ```bash
 EXCLUDE_DIRS=("recovered" "recovered-configs" "unused")
 ```
 
-Pruning uses `find -name "$excl" -prune`, which means:
+Pruning uses `find -iname "$excl" -prune`, which means:
 - The excluded directory and all its children are skipped entirely
 - Exclusion is by **name only**, not by full path - a directory named `recovered` at any depth under any search root will be excluded
 
@@ -103,7 +104,7 @@ When you run a command like `dkr start <app-name>`, DAM resolves `<app-name>` th
 
 1. **Cache check**: If the app was previously resolved (or previously failed), return the cached result
 2. **Space check**: If the name contains spaces, return an error
-3. **Search**: Run `find` across all valid search directories looking for a directory named exactly `<app-name>`
+3. **Search**: Run `find` across all valid search directories looking for a directory named exactly `<app-name>` (or a directory whose Compose file explicitly overrides the name to `<app-name>`).
 4. **Validate**: For each match, check that it contains a Compose file (or, for `update`/`list` with update mode, an `update*.sh` script)
 5. **Result**:
    - **Exactly 1 match**: Cache and return the path
@@ -138,6 +139,7 @@ There is **no precedence rule** between search roots. DAM does not prefer one se
 
 To fix duplicate names:
 - Rename one of the directories
+- Change the custom name in `.env` or `name:` (if you are overriding the default)
 - Remove the unwanted directory from `SEARCH_DIRS`
 - Move one directory into an excluded directory name
 
@@ -188,22 +190,14 @@ By default, Docker Compose uses the directory name as the project name. Since DA
 
 This means:
 - DAM app name = directory basename = Compose project name (by default)
-- If a Compose file sets `name:` explicitly, the Compose project name may differ from the directory name
 - DAM's `status` and `get` commands use the `com.docker.compose.project` label to match containers, which reflects the actual Compose project name
 
-### Edge Case: `name:` Override in Compose File
+### Edge Case: Overriding the Project Name
 
-If a `compose.yaml` contains:
-```yaml
-name: custom-project-name
-```
-
-Then:
-- DAM will still discover and reference the app by its **directory name**
-- Docker Compose will use `custom-project-name` as the project name
-- DAM's `status` and `get` commands may **not** match the containers correctly, because they filter by the directory name, not the Compose project name
-
-This is a known limitation. See [Limitations](limitations.md).
+If you explicitly define a custom name in a `.env` file (`COMPOSE_PROJECT_NAME`) or a `compose.yaml` file (`name:`), DAM will seamlessly support it. In this scenario:
+- The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name.
+- `list` shows the folder name in APP and the custom name in PROJECT.
+- `status`, `get` and the container state use the effective project name to find containers.
 
 ---
 
@@ -214,7 +208,7 @@ SEARCH_DIRS: ["/opt/stacks", "/home/user/apps"]
 EXCLUDE_DIRS: ["recovered", "unused"]
 
 /opt/stacks/
-├── <proxy-app>/             ← App "<proxy-app>" (has compose.yaml)
+├── <app3>/             ← App "<app3>" (has compose.yaml)
 │   └── compose.yaml
 ├── <app-name>/                 ← App "<app-name>" (has docker-compose.yml)
 │   ├── docker-compose.yml
@@ -233,7 +227,7 @@ EXCLUDE_DIRS: ["recovered", "unused"]
     └── update.sh
 
 Discovery Result:
-  <proxy-app>  → /opt/stacks/<proxy-app>
+  <app3>  → /opt/stacks/<app3>
   <app-name>      → /opt/stacks/<app-name>
   <app2>   → /home/user/apps/<app2>
   custom-builder → /home/user/apps/custom-builder  (update mode only)
