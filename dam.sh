@@ -1586,13 +1586,28 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
     if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
         SCRIPT_SOURCE_PATH="$(realpath "$0")"
         if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
-            old_umask=$(umask)
-            umask 077
-            safe_staged_script="$(mktemp /tmp/dam-install-XXXXXX.tmp)"
-            umask "$old_umask"
-            cat "$SCRIPT_SOURCE_PATH" > "$safe_staged_script"
-            SCRIPT_SOURCE_PATH="$safe_staged_script"
-            trap 'rm -f "$safe_staged_script"' EXIT
+            if [[ -z "$DAM_TOCTOU_SECURED" ]]; then
+                old_umask=$(umask)
+                umask 077
+                safe_staged_script="$(mktemp /tmp/dam-install-XXXXXX.tmp)"
+                umask "$old_umask"
+                
+                if ! cat "$SCRIPT_SOURCE_PATH" > "$safe_staged_script"; then
+                    echo -e "${RED}[ERROR]${NC} Failed to stage installer script safely."
+                    rm -f "$safe_staged_script"
+                    exit 1
+                fi
+                
+                chmod 700 "$safe_staged_script"
+                export DAM_TOCTOU_SECURED=1
+                
+                # Re-exec into the root-owned copy so bash reads from the secure file descriptor,
+                # physically closing the Time-of-Check to Time-of-Use window during interactive prompts.
+                exec bash "$safe_staged_script" "$@"
+            else
+                # We are currently running inside the secure staged copy. Set trap to clean ourselves up on exit.
+                trap 'rm -f "$SCRIPT_SOURCE_PATH"' EXIT
+            fi
         fi
     fi
     
