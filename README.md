@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-blue?style=for-the-badge" alt="Version 1.2.0">
+  <img src="https://img.shields.io/github/v/release/RuthvikUpputuri/dam?style=for-the-badge&color=blue&label=version" alt="Latest Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/bash-4.4%2B-orange?style=for-the-badge&logo=gnubash&logoColor=white" alt="Bash 4.4+">
   <img src="https://img.shields.io/badge/docker-compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">

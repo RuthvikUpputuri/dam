@@ -17,14 +17,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Calculate New Version and Update Script
         id: bump
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Extract current version from script
-          CURRENT_VERSION=$(grep -oP '^#VERSION="\K[0-9]+\.[0-9]+\.[0-9]+' dam.sh)
+          # Fetch the latest release tag from GitHub API (or local git tags as a fallback)
+          CURRENT_VERSION=$(gh release view --json tagName -q .tagName 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null)
+          
+          if [[ -z "$CURRENT_VERSION" ]]; then
+            echo "Error: Could not determine the current version from GitHub or local tags!"
+            exit 1
+          fi
+          CURRENT_VERSION=${CURRENT_VERSION#v}
           IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
           
           # Calculate new version based on tags in your commit message
@@ -38,17 +47,22 @@ jobs:
           
           echo "Bumping from $CURRENT_VERSION to $NEW_VERSION"
           
-          # Update the version safely in specific files
+          # Update the version safely in dam.sh
           CURRENT_VERSION_ESCAPED="${CURRENT_VERSION//./\\.}"
-          sed -i "s/${CURRENT_VERSION_ESCAPED}/${NEW_VERSION}/g" dam.sh README.md
+          sed -i "s/^#VERSION=\"${CURRENT_VERSION_ESCAPED}\"/#VERSION=\"${NEW_VERSION}\"/g" dam.sh
           
-          # Export to next steps
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_config_global: true
 
       - name: Commit version bump
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: auto-bump version to ${{ env.NEW_VERSION }}"
           git push
 
