@@ -89,14 +89,14 @@ Instead of:
 ```bash
 cd ~/stacks/<app2> && docker compose up -d
 cd ~/stacks/<app-name> && docker compose pull && docker compose up -d
-cd ~/stacks/<proxy-app> && docker compose restart
+cd ~/stacks/<app3> && docker compose restart
 # …and so on for every app
 ```
 
 you can do:
 
 ```bash
-start all except <proxy-app>
+start all except <app3>
 update <app-name> <app-name-2>
 restart <app2>
 cleanup vol
@@ -115,7 +115,7 @@ DAM discovers your app folders, finds the correct `compose.yaml` / `docker-compo
 | Problem | DAM solution |
 | :------ | :----------- |
 | Constantly `cd` into stack directories | Run commands from anywhere by app name |
-| Updating 10+ apps one by one | `update all` or `update all except <proxy-app>` |
+| Updating 10+ apps one by one | `update all` or `update all except <app3>` |
 | Forgetting which apps exist | Built-in listing + real-time status |
 | Accidental volume/network deletes | Explicit confirmations + opt-in cleanup modes |
 | Different compose file names | Auto-detects `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` |
@@ -128,7 +128,7 @@ It is intentionally focused on **one compose project per folder** which is the p
 
 ## Features
 
-- **Bulk lifecycle control** - start, stop, restart, recreate, force-recreate, pause, unpause, delete
+- **Bulk lifecycle control** - start, stop, kill, restart, recreate, force-recreate, pause, unpause, delete
 - **Smart app selection**
   - `all`
   - `all except app1 app2`
@@ -191,7 +191,7 @@ You can run the script without installing:
 
 ```bash
 ./dam.sh start <app2>
-./dam.sh update all except <proxy-app>
+./dam.sh update all except <app3>
 ./dam.sh cleanup
 ```
 
@@ -243,14 +243,14 @@ Optional modifiers:
 ### Everyday Examples
 
 ```bash
-# Start everything except the reverse proxy
-start all except <proxy-app>
+# Start everything except specific apps
+start all except <app3>
 
 # Restart a couple of apps
 restart <app2> <app-name>
 
 # Pull latest images and recreate
-update <app-name> <app-name-2> <proxy-app>
+update <app-name> <app-name-2> <app3>
 
 # Start an app using specific compose files (resolves 'dev' to 'dev.yaml' or 'compose.dev.yaml', etc.)
 start <app-name> using compose dev prod
@@ -259,9 +259,9 @@ start <app-name> using compose dev prod
 recreate <app4>
 
 # Force recreate (immediate kill + --force-recreate)
-force-recreate portainer
+force-recreate <app3>
 # or the short alias:
-frec portainer
+frec <app3>
 
 # Remove an app stack (containers + networks); volumes kept by default
 delete <app4>
@@ -295,7 +295,7 @@ cleanup all -y
 
 # See what is running
 status all
-status <app-name> <proxy-app>
+status <app-name> <app3>
 ```
 
 ---
@@ -310,6 +310,7 @@ status <app-name> <proxy-app>
 | :------ | :-------------------- |
 | `start` | `docker compose up -d` (creates + starts containers) |
 | `stop` | `docker compose stop` |
+| `kill` | `docker compose kill` |
 | `restart` | `docker compose restart` |
 | `recreate` | `docker compose down --remove-orphans` → `docker compose up -d` |
 | `force-recreate` / `frec` | `docker compose down --remove-orphans -t 0` → `docker compose up -d --force-recreate` |
@@ -452,7 +453,7 @@ Installed configuration lives at `/etc/docker-app-manager.conf` - a Bash-sourcea
 
 🚨 **App name** = basename of the directory. If multiple directories share the same name, DAM reports an error and refuses to guess.
 
-*(Note: If you already explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it. You do not need to remove those overrides for DAM to work! Simply use that custom name when running commands.)*
+*(Note: If you explicitly override the project name via `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file, DAM seamlessly supports it. The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name. `list` shows the folder name in APP and the custom name in PROJECT; `status`, `get` and the container state use the effective project name to find containers.)*
 
 > 📖 **Full details:** [docs/application-discovery.md](docs/application-discovery.md)
 
@@ -530,7 +531,7 @@ Uses the built-in default search paths, so you must specify your stacks path dir
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-dkr update all except <proxy-app>
+dkr update all except <app3>
 dkr cleanup -y
 ```
 

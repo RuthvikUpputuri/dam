@@ -26,7 +26,7 @@ By default, app names are derived strictly from directory basenames. This means:
 
 ### Project Name Overrides
 
-If you explicitly override the project name (using `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file), DAM will seamlessly respect this override. In these specific cases, you must use that custom name (instead of the directory name) when interacting with the app in DAM.
+If you explicitly override the project name (using `COMPOSE_PROJECT_NAME` in a `.env` file or `name:` in your compose file), DAM will seamlessly respect this override. The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name. `list` shows the folder name in APP and the custom name in PROJECT; `status`, `get` and the container state use the effective project name to find containers.
 
 ### Compose-Only Orchestration
 

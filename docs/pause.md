@@ -69,11 +69,11 @@ Append `using <file1> <file2>...` to select Compose files explicitly. If none of
 dkr pause <app-name>
 
 # Pause multiple specific apps
-dkr pause <app-name> <app-name-2> <proxy-app>
+dkr pause <app-name> <app-name-2> <app3>
 
 # Pause all available apps
 dkr pause all
 
-# Pause all apps except the reverse proxy and portainer
-dkr pause all except <proxy-app> portainer
+# Pause all apps except specific apps
+dkr pause all except <app3> <app4>
 ```

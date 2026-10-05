@@ -40,6 +40,7 @@ Before comparing commands, it's essential to understand the conceptual differenc
 | :---------- | :----------------------- | :------------------------ | :------------------- | :------------ | :---- |
 | `start <app>` | None | `docker compose up -d` | **Yes** (uses `up -d`, not `start`) | App discovery, directory resolution and multi app support at once | Project |
 | `stop <app>` | None | `docker compose stop` | **Yes** | App discovery, directory resolution and multi app support at once | Project |
+| `kill <app>` | None | `docker compose kill` | **Yes** | Force stops immediately (SIGKILL) with app discovery | Project |
 | `restart <app>` | None | `docker compose restart` | **Yes** | App discovery, directory resolution and multi app support at once | Project |
 | `recreate <app>` | None | `docker compose down --remove-orphans` + `docker compose up -d` | **No direct equivalent** - this is two commands | Orchestration, orphan removal and multi app support at once | Project |
 | `force-recreate <app>` / `frec` | None | `docker compose down --remove-orphans -t 0` + `docker compose up -d --force-recreate` | **No direct equivalent** | Immediate kill + force-recreate and multi app support at once | Project |
@@ -74,6 +75,10 @@ Before comparing commands, it's essential to understand the conceptual differenc
 ### `stop` vs `docker compose stop`
 
 These are **equivalent**. Both stop running containers without removing them. Containers can be resumed with `start` (which uses `up -d` in DAM).
+
+### `kill` vs `docker compose kill`
+
+These are **equivalent**. Both force stop containers instantly via `SIGKILL` without waiting. Useful for frozen apps.
 
 ### `restart` vs `docker compose restart`
 

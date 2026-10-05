@@ -138,7 +138,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 | `find_app_dir()` | 107-177 | Resolves an app name to a directory path. Uses caching. |
 | `has_compose_files()` | 280-286 | Checks if a directory contains any compose file |
 | `get_app_compose_file()` | 288-303 | Returns the highest-priority compose filename |
-| `resolve_compose_files()` | 316-338 | Resolves `using` files into `-f` arguments; rejects an all-missing file set only for `stop`, `recreate`, `force-recreate`, and `delete` |
+| `resolve_compose_files()` | 316-338 | Resolves `using` files into `-f` arguments; rejects an all-missing file set only for `stop`, `kill`, `recreate`, `force-recreate`, and `delete` |
 | `has_update_files()` | 305-312 | Checks if a directory has compose files OR update scripts |
 | `get_all_apps()` | 495-524 | Returns all discovered app names (for `all` selector) |
 | `is_excluded()` | 241-247 | Checks if a folder name is in EXCLUDE_DIRS |
@@ -154,7 +154,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 
 | Function | Lines | Purpose |
 | :------- | :---- | :------ |
-| `run_compose_action_for_app()` | 752-864 | Handles start, stop, restart, recreate, force-recreate, delete, pause, unpause |
+| `run_compose_action_for_app()` | 752-864 | Handles start, stop, kill, restart, recreate, force-recreate, delete, pause, unpause |
 | `run_update_action_for_app()` | 866-999 | Handles update (custom script or compose pull+build+up) |
 | `run_logs_action_for_app()` | 1001-1075 | Handles log viewing with keyword parsing |
 | `run_debug_action_for_app()` | 1077-1081 | Placeholder for future debug feature |
@@ -236,7 +236,7 @@ DAM supports being invoked as different command names (multicall binary pattern)
 
 ```bash
 COMMAND_NAME="$(basename "$0")"
-SUPPORTED_ACTIONS=("start" "stop" "restart" ...)
+SUPPORTED_ACTIONS=("start" "stop" "kill" "restart" ...)
 
 if [[ " ${SUPPORTED_ACTIONS[*]} " =~ \ ${COMMAND_NAME}\  ]]; then
     set -- "$COMMAND_NAME" "$@"
@@ -314,7 +314,7 @@ Docker Compose creates resources labeled with project "<app-name>"
 
 ### Host Filesystem vs Docker-Managed Resources
 
-- **Host Filesystem**: The directories (e.g., `/opt/stacks/<proxy-app>`) where your Compose files and local bind mounts live. DAM's discovery process relies entirely on this.
+- **Host Filesystem**: The directories (e.g., `/opt/stacks/<app3>`) where your Compose files and local bind mounts live. DAM's discovery process relies entirely on this.
 - **Docker-Managed Resources**: Volumes, networks, images, and containers stored internally by the Docker Daemon. DAM operates on these indirectly through Docker Compose. When you delete an application directory from your filesystem, the Docker-managed resources are **not** automatically deleted unless you run a command like `dam delete <app>` first.
 
 ### Container Name vs Service Name vs Project Name
@@ -333,7 +333,7 @@ When you use DAM, you always target the **Project Name**. You never need to targ
 
 - **Docker Daemon**: The background service running on your host that actually builds, runs, and manages your containers. DAM requires the daemon to be running and accessible.
 - **Docker Client (`docker`)**: The CLI tool used to interact with the daemon. DAM uses this internally for things like `status`, `get`, and `cleanup`.
-- **Docker Compose (`docker compose`)**: A higher-level tool that parses `compose.yaml` files to manage multi-container applications (projects). DAM uses this for all lifecycle commands (`start`, `stop`, `recreate`, `update`).
+- **Docker Compose (`docker compose`)**: A higher-level tool that parses `compose.yaml` files to manage multi-container applications (projects). DAM uses this for all lifecycle commands (`start`, `stop`, `kill`, `recreate`, `update`).
 
 ## Further Reading
 

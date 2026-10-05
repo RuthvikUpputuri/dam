@@ -84,7 +84,7 @@ dkr force-recreate immich
 dkr frec <app-name>
 
 # Replace all targetable stacks except infrastructure that should remain up.
-dkr force-recreate all except <proxy-app> portainer
+dkr force-recreate all except <app3> <app4>
 ```
 
 ## What It Does Not Do

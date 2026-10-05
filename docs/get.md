@@ -108,7 +108,7 @@ dkr get my-app:database vol
 
 **3. Inspecting the image of a specific service:**
 ```bash
-docker inspect $(dkr get <proxy-app>:<proxy-app> iid)
+docker inspect $(dkr get <app3>:<app3> iid)
 ```
 
 **4. Seeing the health status of an entire app stack:**
@@ -156,6 +156,6 @@ This flexibility applies to *all* resources, including the `info` table. For exa
 - `dkr get net all except vpn`
 
 And the exact same rule applies when requesting the deep-dive `info` tables too:
-- `dkr get info <app2> <proxy-app>`
-- `dkr get <app2> info <proxy-app>`
-- `dkr get <app2> <proxy-app> info`
+- `dkr get info <app2> <app3>`
+- `dkr get <app2> info <app3>`
+- `dkr get <app2> <app3> info`

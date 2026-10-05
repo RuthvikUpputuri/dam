@@ -89,11 +89,11 @@ Append `using <file1> <file2>...` to select Compose files explicitly. If none of
 dkr recreate <app-name>
 
 # Recreate multiple specific apps
-dkr recreate <app-name> <app-name-2> <proxy-app>
+dkr recreate <app-name> <app-name-2> <app3>
 
 # Recreate all available apps
 dkr recreate all
 
-# Recreate all apps except the reverse proxy and portainer
-dkr recreate all except <proxy-app> portainer
+# Recreate all apps except specific apps
+dkr recreate all except <app3> <app4>
 ```

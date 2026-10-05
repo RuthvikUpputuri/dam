@@ -218,8 +218,8 @@ By default (no `with` modifiers):
 # Update a single app (standard compose flow)
 dkr update <app-name>
 
-# Update all apps except the reverse proxy
-dkr update all except <proxy-app>
+# Update all apps except specific apps
+dkr update all except <app3>
 
 # Update an app with a custom set of compose files
 dkr update myapp using compose dev prod

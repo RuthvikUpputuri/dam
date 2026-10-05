@@ -46,7 +46,7 @@ The installer will:
 2. **Ask for excluded folder names** - directory names to always ignore (defaults: `recovered`, `recovered-configs`, `unused`)
 3. **Ask for a command name** - how you'll invoke DAM globally:
    - Enter a name like `dkr` (default) or `dam` → commands become `dkr start …`, `dam update …`, etc.
-   - Enter `none` → installs raw commands: `start`, `stop`, `update`, … directly (the installer checks for system conflicts first)
+   - Enter `none` → installs raw commands: `start`, `stop`, `kill`, `update`, … directly (the installer checks for system conflicts first)
 4. **Ask about custom update scripts** - whether `update*.sh` scripts should be allowed to run automatically without prompting. If "No", DAM will interactively ask you for permission each time it finds one.
 5. **Optionally set** a self-update SHA-256 hash. *Note: It is only there for highly strict security environments where administrators want to manually approve and verify every single update before allowing the script to pull it. For normal use, leaving it blank is the best approach.*
 
@@ -71,7 +71,7 @@ This is identical to Method 1 but starts from a local clone. The installer symli
 ```bash
 chmod +x dam.sh
 ./dam.sh start <app-name>
-./dam.sh update all except <proxy-app>
+./dam.sh update all except <app3>
 ./dam.sh cleanup
 ```
 
@@ -114,7 +114,7 @@ Or, for update operations, an `update*.sh` script.
 
 ```
 /opt/stacks/
-├── <proxy-app>/
+├── <app3>/
 │   └── compose.yaml
 ├── <app-name>/
 │   └── docker-compose.yml
@@ -127,7 +127,7 @@ Or, for update operations, an `update*.sh` script.
     └── old-app/
 ```
 
-The **directory basename** becomes the app name used in DAM commands. In this example: `<proxy-app>`, `<app-name>`, `<app2>`, `<app-name>`.
+The **directory basename** becomes the app name used in DAM commands. In this example: `<app3>`, `<app-name>`, `<app2>`, `<app-name>`.
 
 ---
 
@@ -251,7 +251,7 @@ EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "templates" "archive")
 | Value | Resulting Commands | Symlinks Created |
 | :---- | :----------------- | :--------------- |
 | `"dkr"` (or any name) | `dkr start ...`, `dkr update ...` | `/usr/local/bin/dkr` → `/usr/local/bin/docker-app-manager` |
-| `""` (empty / `none`) | `start ...`, `stop ...`, `update ...` | One symlink per action in `/usr/local/bin/` |
+| `""` (empty / `none`) | `start ...`, `stop ...`, `kill ...`, `update ...` | One symlink per action in `/usr/local/bin/` |
 
 **Conflict detection:**
 - During install, if raw mode is selected, the installer checks every supported action name against `command -v` to detect conflicts with existing system commands

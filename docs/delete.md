@@ -16,7 +16,7 @@ dkr delete <app1> with vol
 dkr delete <app1> with img
 dkr delete <app1> with vol img
 dkr delete all -y with all
-dkr delete all except <proxy-app> -y with buildx
+dkr delete all except <app3> -y with buildx
 ```
 
 Place `-y` or `--yes` before `with`. Once DAM has read `with`, every following argument is interpreted as a cleanup mode, so `delete all with vol -y` is rejected as an unknown cleanup argument.
@@ -77,7 +77,7 @@ For safety, DAM filters `vol`, `net`, `img`, and `all` out of this post-delete c
 
 ```bash
 # Remove a stack but retain its database volume for a later restore.
-dkr delete <app3>
+dkr delete <<app3>>
 
 # Fully remove one disposable test stack, including its Compose volumes and images.
 dkr delete <test-app> with all
@@ -86,7 +86,7 @@ dkr delete <test-app> with all
 dkr delete all -y
 
 # Remove stacks and clear unused build cache afterwards.
-dkr delete all except <proxy-app> -y with buildx
+dkr delete all except <app3> -y with buildx
 ```
 
 Use [Safety & Security](safety.md) before deleting data-bearing applications.

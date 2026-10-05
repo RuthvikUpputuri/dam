@@ -88,11 +88,11 @@ docker stats --no-stream <cid1> <cid2> ...
 dkr status <app-name>
 
 # View aggregated status for multiple apps
-dkr status <app-name> <app-name-2> <proxy-app>
+dkr status <app-name> <app-name-2> <app3>
 
 # View status for all available apps
 dkr status all
 
-# View status for all apps except the reverse proxy
-dkr status all except <proxy-app>
+# View status for all apps except specific apps
+dkr status all except <app3>
 ```

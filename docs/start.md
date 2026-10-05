@@ -71,13 +71,13 @@ Append `using <file1> <file2>...` to select Compose files explicitly. If none of
 dkr start <app-name>
 
 # Start multiple specific apps
-dkr start <app-name> <app-name-2> <proxy-app>
+dkr start <app-name> <app-name-2> <app3>
 
 # Start all available apps
 dkr start all
 
-# Start all apps except the reverse proxy and portainer
-dkr start all except <proxy-app> portainer
+# Start all apps except specific apps
+dkr start all except <app3> <app4>
 
 # Start an app merging specific compose files (e.g. dev and prod)
 dkr start <app-name> using compose dev prod

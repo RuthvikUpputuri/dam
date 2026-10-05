@@ -195,8 +195,9 @@ This means:
 ### Edge Case: Overriding the Project Name
 
 If you explicitly define a custom name in a `.env` file (`COMPOSE_PROJECT_NAME`) or a `compose.yaml` file (`name:`), DAM will seamlessly support it. In this scenario:
-- You must use the **custom name** when running DAM commands (e.g., `dkr start custom-name`).
-- DAM will correctly find the directory and match the containers without any issues.
+- The folder name is the primary app name; a custom project name is also accepted as an alias when it does not collide with another folder name.
+- `list` shows the folder name in APP and the custom name in PROJECT.
+- `status`, `get` and the container state use the effective project name to find containers.
 
 ---
 
@@ -207,7 +208,7 @@ SEARCH_DIRS: ["/opt/stacks", "/home/user/apps"]
 EXCLUDE_DIRS: ["recovered", "unused"]
 
 /opt/stacks/
-├── <proxy-app>/             ← App "<proxy-app>" (has compose.yaml)
+├── <app3>/             ← App "<app3>" (has compose.yaml)
 │   └── compose.yaml
 ├── <app-name>/                 ← App "<app-name>" (has docker-compose.yml)
 │   ├── docker-compose.yml
@@ -226,7 +227,7 @@ EXCLUDE_DIRS: ["recovered", "unused"]
     └── update.sh
 
 Discovery Result:
-  <proxy-app>  → /opt/stacks/<proxy-app>
+  <app3>  → /opt/stacks/<app3>
   <app-name>      → /opt/stacks/<app-name>
   <app2>   → /home/user/apps/<app2>
   custom-builder → /home/user/apps/custom-builder  (update mode only)

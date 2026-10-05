@@ -232,7 +232,7 @@ If one app fails during a multi-app operation (e.g., `update all`):
 dkr list
 
 # Check details for specific apps:
-dkr list <app-name> <proxy-app>
+dkr list <app-name> <app3>
 
 # View detailed container info:
 dkr get <app-name> info

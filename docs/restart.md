@@ -71,11 +71,11 @@ Append `using <file1> <file2>...` to select Compose files explicitly. If none of
 dkr restart <app-name>
 
 # Restart multiple specific apps
-dkr restart <app-name> <app-name-2> <proxy-app>
+dkr restart <app-name> <app-name-2> <app3>
 
 # Restart all available apps
 dkr restart all
 
-# Restart all apps except the reverse proxy and portainer
-dkr restart all except <proxy-app> portainer
+# Restart all apps except specific apps
+dkr restart all except <app3> <app4>
 ```
