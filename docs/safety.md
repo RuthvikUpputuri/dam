@@ -284,3 +284,37 @@ Any user who can write files to directories in `SEARCH_DIRS` can influence DAM's
 5. **Prefer specific app names over `all`** for destructive operations
 6. **Understand the global vs app-specific distinction** before running `cleanup vol`
 7. **Restrict write access** to directories in `SEARCH_DIRS`
+
+---
+
+## Security Assurance Case
+
+This section provides the security assurance case for **DAM (Docker App Manager)**, outlining the threat model, trust boundaries, secure design principles, and mitigations against common weaknesses.
+
+### 1. Threat Model
+
+DAM operates as a local Bash script designed to manage Docker Compose applications. 
+**Target Environment:** Local execution on a Linux host (or WSL) by a system administrator or user with appropriate Docker permissions.
+**Potential Threats:**
+- **Local attackers:** Malicious actors with local access attempting to execute arbitrary commands, escalate privileges, or damage Docker stacks.
+- **Malicious directories/filenames:** Path traversal or command injection via crafted application directory names.
+- **Untrusted scripts:** Execution of malicious `update*.sh` files placed in application directories.
+
+### 2. Trust Boundaries
+
+- **The Host File System:** DAM assumes that the user running the script has read/write access to the `SEARCH_DIRS` configured. These directories are considered within the trust boundary.
+- **Docker Daemon:** DAM interacts with the Docker Daemon (`docker.sock`). Anyone running DAM is assumed to already possess Docker daemon access (which is functionally equivalent to root access).
+- **Configuration File (`/etc/docker-app-manager.conf`):** This file is sourced directly as a bash script. Modifying this file requires root privileges; therefore, it is outside the trust boundary of unprivileged users.
+
+### 3. Secure Design Principles Applied
+
+- **Fail-Safe Defaults (Strict Mode):** DAM enforces `set -euo pipefail`. Any undefined variable, command failure, or pipeline failure immediately terminates the script, preventing unpredictable or insecure states.
+- **Least Privilege:** The script executes entirely with the invoking user's permissions. It does not require `sudo` to run its core lifecycle commands and does not attempt to elevate privileges independently.
+- **Explicit Confirmation:** Destructive operations (e.g., `cleanup all` or `delete <app> with vol`) require explicit user confirmation.
+- **Validation:** Applications are selected by explicitly scanning and matching directory names rather than evaluating arbitrary input strings as code.
+
+### 4. Countering Common Implementation Weaknesses
+
+- **Command/Shell Injection:** All inputs, variable expansions, and paths are strictly quoted (e.g., `"$APP_NAME"`). Shellcheck static analysis is enforced in the development pipeline to catch unquoted variables and injection risks.
+- **Path Traversal:** File path resolution uses standard tools (like `find` and `basename`) to safely identify Compose files without relying on user-provided path concatenations.
+- **Unintended Execution:** The custom `update*.sh` script feature requires explicit user approval or a specific configuration flag (`ALLOW_CUSTOM_UPDATE_SCRIPTS=true`) before arbitrary bash scripts found in app directories are executed.

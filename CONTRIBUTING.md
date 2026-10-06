@@ -89,6 +89,17 @@ Update documentation whenever user-visible behavior, options, safety properties,
 - Keep [TODO.md](TODO.md) and [SECURITY.md](SECURITY.md) consistent when planning scope or security reporting changes.
 - Do not describe planned or deferred behavior as implemented.
 
+## Code Review Standards
+
+All changes (including those from the core maintainer) must be reviewed before merging into the default branch. The code review process evaluates the following criteria:
+
+1. **Security & Safety:** Does the change introduce injection vulnerabilities, unsafe shell operations (`eval`), or unintended destructive side effects?
+2. **Scope:** Does the change fit within DAM's goal as a focused Docker Compose lifecycle manager?
+3. **Validation:** Does the code pass `bash -n` and `shellcheck` without warnings? Have manual tests been performed for destructive operations?
+4. **Documentation:** Are user-facing changes documented in `README.md` and the `docs/` folder?
+
+To be accepted, a pull request must pass all CI checks (Shellcheck), address any requested review feedback, and maintain the existing coding style.
+
 ## Pull Requests
 
 Before submitting:
