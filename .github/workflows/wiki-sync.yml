@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'docs/**'
+      - '.github/workflows/wiki-sync.yml'
+  workflow_dispatch:
 
 jobs:
   update-wiki:
