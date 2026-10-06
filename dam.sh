@@ -1583,7 +1583,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
     if [[ "$(realpath "$0" 2>/dev/null)" != "/usr/local/bin/docker-app-manager" && -f "$0" ]]; then
         SCRIPT_SOURCE_PATH="$(realpath "$0")"
         if [[ "$SCRIPT_SOURCE_PATH" == /tmp/* || "$SCRIPT_SOURCE_PATH" == /var/tmp/* ]]; then
-            if [[ -z "$DAM_TOCTOU_SECURED" ]]; then
+            if [[ -z "${DAM_TOCTOU_SECURED:-}" ]]; then
                 old_umask=$(umask)
                 umask 077
                 safe_staged_script="$(mktemp /tmp/dam-install-XXXXXX.tmp)"
@@ -2017,7 +2017,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
     exit 0
 fi
 
-if [[ "$1" != "get" ]]; then
+if [[ "${1:-}" != "get" ]]; then
     print_header
 fi
 

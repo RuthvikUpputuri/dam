@@ -62,8 +62,12 @@ jobs:
           git_config_global: true
 
       - name: Commit version bump
+        env:
+          ORIGINAL_MSG: ${{ github.event.head_commit.message }}
         run: |
-          git commit -am "🚀 Release v${{ env.NEW_VERSION }}"
+          # Extract just the first line (subject) of the triggering commit
+          FIRST_LINE=$(echo "$ORIGINAL_MSG" | head -n 1)
+          git commit -am "🚀 Release v${{ env.NEW_VERSION }} - $FIRST_LINE"
           git push
 
       - name: Create GitHub Release
