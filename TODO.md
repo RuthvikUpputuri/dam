@@ -12,6 +12,15 @@ DAM should make common operations on application stacks easier, not become a sec
   *Added: 2026-10-01*
   Replace the `debug` placeholder with a read-only, app-scoped report covering Compose configuration validation, container state and health, recent logs, and actionable failure hints. Keep it focused; do not make it a general report of every Docker resource.
 
+- [ ] **App File Management (`edit`, `view`, `create`/`init`)**
+  *Added: 2026-10-06*
+  Add semantic commands to manage app configurations without needing to manually `cd` into app directories. These are designed based on native Linux equivalents (`nano`, `cat`, `touch`) but with app-aware behavior:
+  - `edit <app>` (based on `nano`): Opens the `docker-compose.yml` in the user's preferred editor (using `$EDITOR` or `$VISUAL`, falling back to `nano` or `vi`). Like `nano`, if the file is not present, saving the editor buffer will generate it.
+  - `view <app>` (based on `cat`): Prints the parsed configuration using `docker compose config` (or simply outputs the raw compose file contents). Like `cat`, if the configuration file is not present, this will throw an error and will not generate a file.
+  - `create <app>` (or `init <app>`, based on `touch`): Scaffolds a new app directory and generates a basic boilerplate `compose.yml` to help users get started quickly. Like `touch`, it creates files if they aren't present.
+  
+  *Note: All three commands can be used with the `using` modifier to target specific files (e.g., `dam edit <app> using custom.yml`).*
+
 ## Deferred Ideas
 
 These are not commitments or active work. Revisit them when there is a demonstrated user need.
