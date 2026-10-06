@@ -39,6 +39,7 @@ DAM prompts for folder names to permanently ignore during scans.
 ### Step 4: Custom Command Name
 DAM configures how you invoke it globally.
 - **Raw Commands**: If you enter `none`, DAM creates global symlinks for every individual action (`start`, `stop`, `update`, etc.). DAM will aggressively scan your system's `PATH` to ensure these generic names don't conflict with existing system binaries.
+  <br>⚠️ **WARNING**: Raw Mode is NOT recommended unless you are an advanced Linux user. Hijacking extremely common words like `start`, `stop`, or `update` in `/usr/local/bin` can break completely unrelated applications, cron jobs, or system utilities that rely on those verbs.
 - **Custom Prefix**: The recommended approach. If you enter a name like `dkr`, `dam`, or `app`, DAM creates a single symlink, allowing you to run commands like `dkr update <app-name>`.
 
 ### Step 5: Security & Updates

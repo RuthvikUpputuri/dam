@@ -1,0 +1,46 @@
+name: Sync docs to Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+
+jobs:
+  update-wiki:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Wiki repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          # The default GITHUB_TOKEN has access to the wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync docs folder to Wiki
+        run: |
+          # Remove all existing markdown files in the wiki to catch deleted files
+          find wiki -name "*.md" -type f -delete
+          
+          # Copy all files from docs folder into the root of the wiki repository
+          cp -r docs/* wiki/
+          
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          
+          # Only commit and push if there are actual changes
+          if git diff-index --quiet HEAD; then
+            echo "No changes to sync to the Wiki."
+          else
+            git commit -m "docs: sync from main repository's docs folder"
+            git push
+          fi

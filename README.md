@@ -249,6 +249,13 @@ start all except <app3>
 # Restart a couple of apps
 restart <app2> <app-name>
 
+# Force stop an app immediately without removing it
+kill <app-name>
+
+# Pause and unpause containers
+pause <app3>
+unpause <app3>
+
 # Pull latest images and recreate
 update <app-name> <app-name-2> <app3>
 
