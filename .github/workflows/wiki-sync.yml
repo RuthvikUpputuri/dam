@@ -32,6 +32,11 @@ jobs:
           # Copy all files from docs folder into the root of the wiki repository
           cp -r docs/* wiki/
           
+          # GitHub Wiki requires a Home.md as the landing page
+          if [ -f "docs/README.md" ]; then
+            cp docs/README.md wiki/Home.md
+          fi
+          
           cd wiki
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
