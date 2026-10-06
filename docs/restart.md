@@ -8,6 +8,14 @@ This document explains exactly how DAM's `restart` command works, including cont
 
 The `restart` command performs a simple, in-place restart of running containers for the selected apps. It is a quick way to bounce services (e.g., to reload an internal configuration file mapped via a volume), but it **does not** apply changes made to the Compose file itself.
 
+To restart only one service, use `<app>:<service>`:
+
+```bash
+dkr restart <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose restart` and displays status for that service.
+
 ---
 
 ## Restart Flow

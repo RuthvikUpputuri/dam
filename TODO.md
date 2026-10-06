@@ -25,7 +25,13 @@ DAM should make common operations on application stacks easier, not become a sec
 
 These are not commitments or active work. Revisit them when there is a demonstrated user need.
 
-- **Dependency Graph / Shared Resources:** During bulk operations (like `recreate all`), sequentially tearing down a stack might fail or disrupt other apps if it shares networks or volumes without `external: true` set. Consider implementing execution order dependencies (e.g., via a `.dam-dependencies` file) to ensure database stacks start before web stacks, mitigating resource conflicts.
+- **Parallel Processing (`parallel` keyword):** Consider adding an opt-in keyword to run operations on multiple apps concurrently rather than sequentially.
+  *Caveats to address if implemented:*
+  - *Output Interleaving:* Streaming multiple `docker compose` outputs simultaneously will garble the terminal. Output must be buffered and printed sequentially, or hidden behind a status summary.
+  - *Resource Exhaustion:* Pulling or starting dozens of heavy stacks concurrently can cause CPU/RAM spikes, OOM kills, and Docker registry timeouts.
+  - *Dependencies:* Apps that share networks or rely on each other (e.g. databases, reverse proxies) may fail if started simultaneously instead of sequentially.
+
+- **Dependency Graph / Shared Resources:** During bulk operations (like `recreate all`), sequentially tearing down a stack might fail or disrupt other apps if it shares networks or volumes without `external: true` set in the compose file. Consider implementing execution order dependencies (e.g., via a `.dam-dependencies` file) to ensure database stacks start before web stacks, mitigating resource conflicts.
 
 - **Compose profiles:** Consider support for profiles in app operations. Prefer forwarding familiar Compose options where practical over inventing a DAM-specific command model.
 - **Health-aware update verification:** After an update, optionally wait for services with declared health checks and fail with a clear report if they become unhealthy. Define which services are checked and a strict timeout; do not automatically roll back.

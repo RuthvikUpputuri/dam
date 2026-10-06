@@ -19,12 +19,13 @@ update <app-name>
 
 When the script is invoked through a symlink named after a supported action, it prepends that action internally. For example, `frec <app-name>` is parsed as `force-recreate <app-name>`.
 
-Most operational commands require all of the following before DAM processes apps:
+Operational commands require all of the following before DAM processes apps:
 
 - Bash 4.4 or later
 - the `docker` command
 - a reachable Docker daemon for the current user
 - either `docker compose` or legacy `docker-compose`
+- the `column` utility (provided by `util-linux` on many Linux distributions)
 
 DAM prefers `docker compose` and falls back to `docker-compose`. It manages one Compose project per directory; it is not a Swarm or Kubernetes manager.
 
@@ -36,10 +37,13 @@ The standard selector is used by `start`, `stop`, `kill`, `restart`, `recreate`,
 | :-- | :-- |
 | `<cmd> <action> app1 [using files...]` | One app directory |
 | `<cmd> <action> app1 app2 [using files...]` | Multiple app directories, processed sequentially |
+| `<cmd> <action> app1:service [using files...]` | Targets a specific service within an app (e.g. `n8n:postgres`) |
 | `<cmd> <action> all [using files...]` | Every discovered app eligible for that action |
 | `<cmd> <action> all except app1 app2 [using files...]` | All eligible apps other than the named apps |
 
-App names are exact directory basenames and cannot contain whitespace. DAM searches `SEARCH_DIRS` to `MAX_SEARCH_DEPTH` (default `5`), skips configured `EXCLUDE_DIRS`, and recognizes an app when it contains a standard Compose filename or, for update discovery, an `update*.sh` file. A name resolving to multiple directories is an error.
+App names are directory basenames or effective Compose project names read from a simple `COMPOSE_PROJECT_NAME` assignment in `.env` or a top-level `name:` in `compose.yaml`. App names cannot contain whitespace. DAM searches `SEARCH_DIRS` to `MAX_SEARCH_DEPTH` (default `3`), skips configured `EXCLUDE_DIRS`, and recognizes an app when it contains a standard Compose filename or, for update discovery, an `update*.sh` file. A name resolving to multiple directories is an error.
+
+Use `app:service` for Compose lifecycle actions, `logs`, `update`, and `get` to select a service. It is not supported by `list` or `status`; `delete app:service` is rejected because deletion operates on the whole project. If an `update*.sh` custom script is run, it receives no service filter and may update the entire app.
 
 `all` must be the first selection token and `except` must immediately follow `all`. DAM validates each requested exclusion. An explicitly selected excluded app is skipped by normal lifecycle processing. `get` is special: it directly queries containers and does not use the lifecycle skip path.
 
@@ -53,8 +57,8 @@ Every non-`get` lifecycle command prints a per-app section and a final summary o
 | `stop` | `stop` | Stops project containers without removing them. |
 | `kill` | `kill` | Force stops project containers immediately (SIGKILL) without removing them. |
 | `restart` | `restart` | Restarts existing containers in place. |
-| `recreate` | `down --remove-orphans`, then `up -d` | Gracefully replaces the whole stack. |
-| `force-recreate`, `frec` | `down --remove-orphans -t 0`, then `up -d --force-recreate` | Replaces the whole stack with zero shutdown timeout. |
+| `recreate` | Whole app: `down --remove-orphans`, then `up -d`; service: `up -d --force-recreate <service>` | Gracefully replaces the whole stack, or force-recreates only the selected service. |
+| `force-recreate`, `frec` | Whole app: `down --remove-orphans -t 0`, then `up -d --force-recreate`; service: `stop -t 0`, `rm -f`, then `up -d --force-recreate <service>` | Replaces the whole stack with zero shutdown timeout, or force-recreates one service. |
 | `pause` | `pause` | Pauses project containers. |
 | `unpause` | `unpause` | Resumes paused project containers. |
 | `delete` | `down --remove-orphans` plus optional flags | Removes a project and then runs safe dangling-image cleanup. |
@@ -90,7 +94,7 @@ DAM employs an intelligent shorthand resolution algorithm for every file request
 > [!NOTE]
 > Because the bare filename without a prefix takes precedence for a given extension, if an app has both `<name>.yml` and `compose.<name>.yml` and you specify `using <name>`, **`<name>.yml` will be selected**. To target the prefixed file, you must be explicit (e.g., `using compose.<name>`).
 
-If **at least one** custom file is matched using this logic, DAM strictly uses the found files and emits a warning for any requested file that was not found for that app. If **none** of the requested custom files can be resolved in an app, `stop`, `kill`, `recreate`, `force-recreate`, and `delete` report an error rather than falling back to the default Compose file. Other actions retain the default-file fallback. At the very end of the run, DAM outputs a global summary listing any file shorthands that were not matched in *any* processed app, as well as a list of specific apps that were missing partially matched files.
+If **at least one** custom file is matched using this logic, DAM strictly uses the found files and emits a warning for any requested file that was not found for that app. If **none** of the requested custom files can be resolved in an app, `stop`, `kill`, `recreate`, `force-recreate`, and `delete` report an error rather than falling back to the default Compose file. Other actions retain the default-file fallback. A permitted custom update script runs before Compose file resolution, so it does not use the selected files. At the very end of the run, DAM outputs a global summary listing any file shorthands that were not matched in *any* processed app, as well as a list of specific apps that were missing partially matched files.
 
 Read the dedicated pages for [start](start.md), [stop](stop.md), [kill](kill.md), [restart](restart.md), [recreate](recreate.md), [force-recreate](force-recreate.md), [pause](pause.md), [unpause](unpause.md), [delete](delete.md), and [update](update.md).
 
@@ -101,7 +105,7 @@ Read the dedicated pages for [start](start.md), [stop](stop.md), [kill](kill.md)
 | `status` | Multi-project container state and one-shot resource usage | Uses Compose project labels with `docker ps -a`, then `docker stats --no-stream`. |
 | `list` | Application inventory or selected-app details | No arguments perform a fast global inventory scan (columns: APP, PROJECT, LOCATION, COMPOSE, STATUS); `list all` is a targeted query and omits excluded apps (columns: APP, PROJECT, PATH, COMPOSE FILE, OVERALL STATE). |
 | `get` | Scriptable container metadata | Requires one resource such as `cid`, `iid`, `vol`, `mnt`, `net`, `port`, `state`, `health`, or `info`. Supports `app:service` and `full` IDs. |
-| `logs` | Project-wide Compose logs | Translates human-friendly keywords such as `last 100`, `live`, `since 30m`, and `time`. Live logs are blocked for `all`. |
+| `logs` | Project-wide Compose logs | Translates human-friendly keywords such as `last 100`, `last 30m`, `live`, `since 30m`, and `time`. Live logs are blocked for `all`. |
 | `debug` | Placeholder | Prints a TODO per resolvable app; no diagnostics run yet. |
 
 Use [status](status.md), [list](list.md), [get](get.md), [logs](logs.md), and [debug](debug.md) for exact output and parsing semantics.
@@ -116,9 +120,9 @@ Use [status](status.md), [list](list.md), [get](get.md), [logs](logs.md), and [d
 
 `cleanup` is an existing convenience for a small set of common, host-wide prune operations; it is not app-scoped. It always handles dangling images and can additionally prune unused networks, volumes, build cache, or all unused images. Use Docker's native CLI for specialized maintenance or options DAM does not expose. `cleanup` is separate from project deletion and has its own prompts. `all` cannot be combined with a specific cleanup target.
 
-`delete all` requires the exact interactive answer `yes` unless `-y` or `--yes` is supplied. The same flag bypasses cleanup's volume, network, and full-image confirmations. In non-interactive environments, destructive bulk operations requiring a prompt fail unless `-y` is present.
+`delete all`, `kill all`, `stop all`, `recreate all`, and `force-recreate all` require the exact interactive answer `yes` unless `-y` or `--yes` is supplied. The same flag bypasses cleanup's volume, network, and full-image confirmations. In non-interactive environments, destructive bulk operations requiring a prompt fail unless `-y` is present.
 
-`with` belongs only to `delete`, and `-y` must appear before its `with` clause. `with vol` and `with img` are project-scoped Compose flags; they do not trigger host-wide pruning. See [cleanup](cleanup.md), [delete](delete.md), and [Safety & Security](safety.md).
+`with` belongs only to `delete`; once `with` appears, following arguments are parsed as cleanup modes except that `-y`/`--yes` is recognized wherever it occurs. `with vol` and `with img` are project-scoped Compose flags; they do not trigger host-wide pruning. See [cleanup](cleanup.md), [delete](delete.md), and [Safety & Security](safety.md).
 
 ## System Commands
 

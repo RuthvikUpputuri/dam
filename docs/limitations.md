@@ -37,7 +37,7 @@ DAM is designed exclusively for standalone Docker Compose. It does not work with
 
 ### Search Depth Limit
 
-Discovery uses `find -maxdepth "${MAX_SEARCH_DEPTH}"` (which defaults to 5). Apps nested deeper than this setting below a search root will not be found. This depth limit can be increased in the configuration file. The `maxdepth` only applies to the depth below the search roots defined in `SEARCH_DIRS`.
+Discovery uses `find -maxdepth "${MAX_SEARCH_DEPTH}"` (which defaults to 3). Apps nested deeper than this setting below a search root will not be found. This depth limit can be increased by setting `MAX_SEARCH_DEPTH` in the configuration file. The `maxdepth` only applies to the depth below the search roots defined in `SEARCH_DIRS`.
 
 Every qualifying directory within that depth is independently discovered. For example, `beta/old/compose.yaml` makes `old` an app even when it is only an archive below `beta`. If a directory should not be used as an app, add its basename to `EXCLUDE_DIRS` in `/etc/docker-app-manager.conf` to prevent discovery.
 
@@ -192,7 +192,7 @@ DAM uses ANSI escape codes for colored output. These may not render correctly in
 
 ### Config File
 
-The config file at `/etc/docker-app-manager.conf` is sourced as Bash code. Anyone who can write to this file can execute arbitrary code the next time DAM runs.
+The config file at `/etc/docker-app-manager.conf` is sourced as Bash code. DAM verifies that it is owned by `root` and is not group- or world-writable before sourcing it. A privileged actor can still change the file and execute code the next time DAM runs.
 
 ### Self-Update Without SHA256
 

@@ -1,4 +1,7 @@
 <p align="center">
+  <a href="https://www.bestpractices.dev/projects/15246"><img src="https://www.bestpractices.dev/projects/15246/badge" alt="OpenSSF Best Practices"></a>
+</p>
+<p align="center">
 
   <img src="https://img.shields.io/github/v/release/RuthvikUpputuri/dam?style=for-the-badge&color=blue&label=version" alt="Latest Version">
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT License">
@@ -6,9 +9,7 @@
   <img src="https://img.shields.io/badge/docker-compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">
   <img src="https://img.shields.io/badge/platform-linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
 </p>
-<p align="center">
-  <a href="https://www.bestpractices.dev/projects/15246"><img src="https://www.bestpractices.dev/projects/15246/badge" alt="OpenSSF Best Practices"></a>
-</p>
+
 <h1 align="center">DAM - Docker App Manager</h1>
 
 <p align="center">
@@ -136,6 +137,7 @@ It is intentionally focused on **one compose project per folder**, a standard ar
   - `all`
   - `all except app1 app2`
   - one or more specific apps
+- **Target specific services** with `app:service` for lifecycle actions, logs, updates, and `get` (e.g., `logs n8n:postgres last 50`); `delete` remains app-scoped
 - **Smart updates** - pull images, build with fresh base images, recreate - or run a custom `update*.sh` if present. Stopped apps are left stopped.
 - **Basic optional cleanup** - an existing convenience for common host-wide prune operations, with confirmations for destructive modes
 - **Global install** - system-wide commands + config under `/etc`
@@ -158,7 +160,7 @@ It is intentionally focused on **one compose project per folder**, a standard ar
 | **Bash 4.4+** | Required (empty-array expansion under `set -u`) |
 | **Docker** | Daemon must be running and accessible by your user |
 | **Docker Compose** | Either the v2 plugin (`docker compose`) or standalone `docker-compose` |
-| **column** | Part of `util-linux`; used by `list`, `get`, and `status` for table formatting |
+| **column** | Part of `util-linux`; required by DAM's operational commands for table formatting |
 | **Linux** (primary) | Tested on all common Linux distributions (Debian, Ubuntu, Arch, etc.). Fully compatible with Windows **WSL/WSL2**. macOS works if modern Bash 4.4+ is installed via Homebrew. |
 
 Check versions:
@@ -233,15 +235,18 @@ The same selection syntax works for almost every action:
 | `<action> all except app1 app2 [using files...]` | Every app except the listed ones |
 | `<action> app1 [using files...]` | Single app |
 | `<action> app1 app2 app3 [using files...]` | Multiple specific apps |
+| `<action> app:service` | A supported service-targeted lifecycle action, `logs`, `update`, or `get` |
 
 Optional modifiers:
 
 - Append `using <file1> <file2>...` to explicitly specify which Compose files to use (e.g. `using compose.yaml compose.override.yaml`). It automatically resolves shorthand names (e.g., `dev` to `dev.yaml` or `compose.dev.yaml`).
-  - If none of the requested files resolve, `stop`, `recreate`, `force-recreate`, and `delete` fail rather than using the default Compose file. Other Compose actions fall back to their default Compose file. If at least one file resolves, DAM runs with only the matched files and warns about the missing ones.
+  - If none of the requested files resolve, `stop`, `kill`, `recreate`, `force-recreate`, and `delete` fail rather than using the default Compose file. Other Compose actions fall back to their default Compose file. If at least one file resolves, DAM runs with only the matched files and warns about the missing ones.
 - Append `with vol`, `with net`, `with buildx`, `with img`, or `with all` on **delete** to trigger extended cleanup.
 - Use `-y` or `--yes` to skip confirmation prompts (especially important for `delete all` and volume/image prunes).
 
-**Note:** App names and paths must **not** contain spaces. App names are derived from the directory name. So if you have a folder named `<app-name>`, the app name will be `<app-name>`. If you have a folder named `<app-name>-old`, the app name will be `<app-name>-old`.
+**Note:** App names and paths must **not** contain spaces. By default, the app name is the directory basename; a simple `COMPOSE_PROJECT_NAME` in `.env` or a top-level Compose `name:` can also be used as an app-name alias. For example, a folder named `<app-name>-old` has the app name `<app-name>-old` unless it defines an effective project-name alias.
+
+Service targeting is not supported by `list` or `status`; `delete` accepts only an app target and rejects `app:service`.
 
 ### Everyday Examples
 
@@ -387,9 +392,9 @@ Human-friendly keyword syntax:
 
 | Keyword | Effect |
 | :------ | :----- |
-| `last <N>` | Show the last N lines |
+| `last <N/time>` | Show the last `N` lines or smartly filter by duration (e.g. `last 30m`) |
 | `first <N>` | Show the first N lines |
-| `since <time>` | Show logs since a timestamp/duration (e.g. `since 30m`) |
+| `since <time>` | Show logs since a timestamp/duration (e.g. `since 30m`, `since 2026-10-06`) |
 | `until <time>` | Show logs until a timestamp |
 | `live` / `follow` | Stream logs in real-time |
 | `time` / `timestamps` | Prefix every line with a timestamp |
@@ -422,7 +427,7 @@ DAM looks for app folders under the directories listed in `SEARCH_DIRS`. **Defau
 
 ### Exclude Folders
 
-Folder **names** (not full paths) listed in `EXCLUDE_DIRS` are pruned during discovery. Default excludes: `recovered`, `recovered-configs`, `unused`.
+Folder **names** (not full paths) listed in `EXCLUDE_DIRS` are pruned during discovery, using case-sensitive exact matches. Default excludes when no config file exists: `recovered`, `recovered-configs`, `unused`, `backups`.
 
 ### Custom Command Name
 
@@ -486,7 +491,7 @@ If an app directory contains a file matching `update*.sh` and custom scripts are
 
 ### Safety Guards
 
-- Destructive bulk actions (`delete all`, volume prune, aggressive image prune) require explicit confirmation unless `-y` / `--yes` is passed.
+- Destructive bulk actions (`delete/kill/stop/recreate/force-recreate all`, volume prune, aggressive image prune) require explicit confirmation unless `-y` / `--yes` is passed.
 - Non-interactive terminals (no TTY) refuse destructive prompts and ask you to use `-y`.
 - Volumes are **preserved by default** on `delete`. You must explicitly request `with vol`.
 - `cleanup vol`/`cleanup all` operates **globally** on the Docker host - separate from app-level cleanup.

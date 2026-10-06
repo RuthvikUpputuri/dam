@@ -19,11 +19,13 @@ dkr delete all -y with all
 dkr delete all except <app3> -y with buildx
 ```
 
-Place `-y` or `--yes` before `with`. Once DAM has read `with`, every following argument is interpreted as a cleanup mode, so `delete all with vol -y` is rejected as an unknown cleanup argument.
+`-y` or `--yes` can appear before or after `with`; those flags are recognized wherever they occur. Once DAM has read `with`, other following arguments are interpreted as cleanup modes, so unknown mode names are rejected.
 
 ## App Selection and Confirmation
 
 `delete` accepts one or more app directory names, `all`, or `all except app1 app2`. Names in `EXCLUDE_DIRS` are never operated on. A requested app that is missing or has multiple matching directories is counted as a failure; DAM continues with the other selected apps and reports a summary.
+
+Deletion is app-scoped: `delete app:service` is rejected. Use `delete app` to remove the project stack.
 
 `delete all`, including `delete all except ...`, requires confirmation. DAM lists the selected apps and requires the exact response `yes`; `y` alone cancels the operation. `-y` or `--yes` skips that confirmation. If standard input is not a terminal, `delete all` fails unless the flag is present.
 

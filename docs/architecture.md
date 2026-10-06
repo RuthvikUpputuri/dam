@@ -6,7 +6,7 @@ This document describes DAM's internal architecture, execution flow, and design 
 
 ## Overview
 
-DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no external dependencies beyond Bash 4.4+, Docker, and Docker Compose. It uses:
+DAM is a single Bash script (`dam.sh`, version 1.3.2). It requires Bash 4.4+, Docker with a reachable daemon, a Compose implementation, `column`, and standard Linux command-line utilities. It uses:
 
 - **Bash associative arrays** for caching
 - **`find`** for directory discovery
@@ -29,7 +29,8 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 │  • set -uo pipefail                                       │
 │  • Bash version check (≥ 4.4)                             │
 │  • Load config from /etc/docker-app-manager.conf          │
-│    (or use fallback defaults)                             │
+│    (after root ownership and permission checks, or use    │
+│     fallback defaults)                                    │
 │  • Build FIND_PRUNE_ARGS from EXCLUDE_DIRS                │
 │  • Initialize APP_DIR_CACHE                               │
 │  • Initialize MAX_SEARCH_DEPTH                            │
@@ -69,6 +70,7 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 │    1. command -v docker                                   │
 │    2. docker info                                         │
 │    3. docker compose version OR docker-compose version    │
+│    4. column utility                                      │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            ▼
@@ -127,66 +129,66 @@ DAM is a single Bash script (`dam.sh`, ~2064 lines, version 1.1.0) with no exter
 
 ### Configuration & Setup
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| *(top-level config loading)* | 65-103 | Loads config file or sets fallback defaults |
+| Function / block | Purpose |
+| :--------------- | :------ |
+| Top-level config loading | Validates ownership and permissions, then loads config or sets fallback defaults |
 
 ### App Discovery
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| `find_app_dir()` | 107-177 | Resolves an app name to a directory path. Uses caching. |
-| `has_compose_files()` | 280-286 | Checks if a directory contains any compose file |
-| `get_app_compose_file()` | 288-303 | Returns the highest-priority compose filename |
-| `resolve_compose_files()` | 316-338 | Resolves `using` files into `-f` arguments; rejects an all-missing file set only for `stop`, `kill`, `recreate`, `force-recreate`, and `delete` |
-| `has_update_files()` | 305-312 | Checks if a directory has compose files OR update scripts |
-| `get_all_apps()` | 495-524 | Returns all discovered app names (for `all` selector) |
-| `is_excluded()` | 241-247 | Checks if a folder name is in EXCLUDE_DIRS |
+| Function | Purpose |
+| :------- | :------ |
+| `find_app_dir()` | Resolves directory basenames and effective Compose project names to a directory, using a cache and reporting ambiguity. |
+| `has_compose_files()` | Checks if a directory contains a supported Compose filename. |
+| `get_app_compose_file()` | Returns the highest-priority Compose filename, or an update script for an update-only app. |
+| `resolve_compose_files()` | Resolves `using` files into `-f` arguments; rejects an all-missing file set for `stop`, `kill`, `recreate`, `force-recreate`, and `delete`. |
+| `has_update_files()` | Checks if a directory has Compose files or update scripts. |
+| `get_all_apps()` | Returns discovered app names for the `all` selector. |
+| `is_excluded()` | Checks an exact directory-basename match against `EXCLUDE_DIRS`. |
 
 ### Docker Abstraction
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| `dc()` | 249-258 | Wrapper: tries `docker compose`, falls back to `docker-compose` |
-| `docker_ready()` | 260-278 | Validates Docker and Compose are available and running |
+| Function | Purpose |
+| :------- | :------ |
+| `dc()` | Wrapper: tries `docker compose`, falls back to `docker-compose`. |
+| `docker_ready()` | Validates Docker, daemon, Compose, and the `column` utility. |
 
 ### Command Handlers
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| `run_compose_action_for_app()` | 752-864 | Handles start, stop, kill, restart, recreate, force-recreate, delete, pause, unpause |
-| `run_update_action_for_app()` | 866-999 | Handles update (custom script or compose pull+build+up) |
-| `run_logs_action_for_app()` | 1001-1075 | Handles log viewing with keyword parsing |
-| `run_debug_action_for_app()` | 1077-1081 | Placeholder for future debug feature |
-| `process_app()` | 1083-1152 | Entry point for per-app processing; dispatches to appropriate handler |
-| `cleanup_dangling_resources()` | 587-750 | Handles all cleanup operations (images, networks, volumes, build cache) |
+| Function | Purpose |
+| :------- | :------ |
+| `run_compose_action_for_app()` | Handles lifecycle actions and service-specific targets. |
+| `run_update_action_for_app()` | Handles custom update scripts or the Compose pull/build/up flow. |
+| `run_logs_action_for_app()` | Handles log viewing, service selection, and keyword translation. |
+| `run_debug_action_for_app()` | Placeholder; does not run diagnostics. |
+| `process_app()` | Per-app entry point; dispatches to the appropriate handler. |
+| `cleanup_dangling_resources()` | Handles requested cleanup operations (images, networks, volumes, build cache). |
 
 ### Argument Parsing
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| `parse_target_apps()` | 1154-1301 | Parses app selection, modifiers, and populates APPS_TO_PROCESS |
+| Function | Purpose |
+| :------- | :------ |
+| `parse_target_apps()` | Parses app selection, modifiers, logs/get arguments, and populates `APPS_TO_PROCESS`. |
 
 ### Display & Output
 
-| Function | Lines | Purpose |
-| :------- | :---- | :------ |
-| `print_header()` | 198-204 | Prints the DAM banner |
-| `print_section()` | 206-213 | Prints per-app section header |
-| `print_summary()` | 215-239 | Prints the final summary with counters |
-| `usage()` | 526-585 | Prints help/usage information |
-| `print_apps_in_columns()` | 314-336 | Formats app names in 3-column layout |
-| `list_available_apps()` | 338-407 | Lists apps organized by search directory |
-| `inventory_apps_table()` | 409-464 | Full inventory table with status |
-| `print_app_level_details_table()` | 466-493 | Detailed table for specific apps |
+| Function | Purpose |
+| :------- | :------ |
+| `print_header()` | Prints the DAM banner. |
+| `print_section()` | Prints a per-app section header. |
+| `print_summary()` | Prints the final summary with counters. |
+| `usage()` | Prints help/usage information. |
+| `print_apps_in_columns()` | Formats app names in a three-column layout. |
+| `list_available_apps()` | Lists apps organized by search directory. |
+| `inventory_apps_table()` | Prints a global inventory table with status. |
+| `print_app_level_details_table()` | Prints details for specifically selected apps. |
 
 ### Administrative
 
-| Function/Block | Lines | Purpose |
-| :------------- | :---- | :------ |
-| Install handler | 1438-1709 | Interactive wizard + file operations |
-| Self-update handler | 1349-1401 | Download, validate, install |
-| Uninstall handler | 1403-1435 | Remove all installed files |
+| Function/Block | Purpose |
+| :------------- | :------ |
+| Install handler | Interactive wizard and installation file operations. |
+| Self-update handler | Downloads, validates, and installs an update. |
+| Uninstall handler | Removes the installed script, managed links, and config file. |
 
 ---
 

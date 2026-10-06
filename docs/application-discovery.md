@@ -51,11 +51,11 @@ The `sudo` handling is notable: if the script is run via `sudo`, DAM resolves th
 
 ### Depth
 
-DAM uses `find` with `-mindepth 1 -maxdepth 5`. This means:
+DAM uses `find` with `-mindepth 1 -maxdepth "${MAX_SEARCH_DEPTH}"`. The default `MAX_SEARCH_DEPTH` is `3`. This means:
 
-- Subdirectories at depth 1 through 5 under each search root are examined
+- Subdirectories at depth 1 through the configured maximum under each search root are examined
 - The search root itself is not treated as an app
-- Deeply nested directories (depth > 5) are not discovered unless configured in config file via the `MAX_SEARCH_DEPTH` variable
+- Directories deeper than 3 levels are not discovered by default; set `MAX_SEARCH_DEPTH` in `/etc/docker-app-manager.conf` to change the limit
 - Every examined directory that contains a qualifying Compose file is treated as a separate app. For example, `beta/old/compose.yaml` registers `old` as an app as well as any qualifying `beta` directory. If a directory should not be used as an app, add its basename to `EXCLUDE_DIRS` in `/etc/docker-app-manager.conf` (or configure it through `sudo <cmd> config`).
 
 ### Directory Exclusion

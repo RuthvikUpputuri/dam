@@ -8,6 +8,14 @@ This document explains exactly how DAM's `pause` command works, detailing how it
 
 The `pause` command freezes all running processes inside the containers of the selected apps. Unlike `stop` (which tells the application to gracefully shut down and exit), `pause` literally suspends the process threads in the host operating system kernel. The application remains in memory exactly as it was, but consumes no CPU cycles.
 
+Use `<app>:<service>` to pause only one service:
+
+```bash
+dkr pause <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose pause` and displays status for that service.
+
 ---
 
 ## Pause Flow

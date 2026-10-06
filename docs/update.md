@@ -11,6 +11,8 @@ The `update` command is DAM's most complex lifecycle operation. For each app, it
 1. **Custom script path** - if an `update*.sh` script exists in the app directory
 2. **Standard compose path** - pull images, build, recreate
 
+The standard Compose path accepts `<app>:<service>` and limits the running-state check, pull, build, startup, and final status query to that service. A discovered custom update script is app-level and runs without a service filter, even if the request used `app:service`.
+
 ---
 
 ## Standard Compose Update Flow

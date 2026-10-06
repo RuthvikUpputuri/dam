@@ -1,6 +1,6 @@
 # DAM Documentation
 
-**Docker App Manager** - Complete documentation for version 1.1.0.
+**Docker App Manager** - Documentation for the current version.
 
 ---
 

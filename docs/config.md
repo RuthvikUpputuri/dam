@@ -38,7 +38,7 @@ When invoked through `sudo`, DAM derives `<real-user-home>` from `SUDO_USER` whe
 
 DAM asks for directory basenames to ignore during discovery. Enter names separated by spaces, press Enter to retain existing exclusions, or enter `none` to clear them.
 
-Exclusions are case-insensitive directory-name matches, not paths or patterns. An excluded app is omitted from `all` selection and skipped by lifecycle processing, although `list` can show it as `excluded`.
+Exclusions are case-sensitive directory-name matches, not paths or patterns. An excluded app is omitted from `all` selection and skipped by lifecycle processing, although the no-argument `list` inventory can show it as `excluded`.
 
 ### 3. Global Command Name
 
@@ -71,14 +71,16 @@ The wizard manages these Bash assignments in `/etc/docker-app-manager.conf`:
 
 ```bash
 SEARCH_DIRS=("/opt/stacks" "/home/alice/apps")
-EXCLUDE_DIRS=("recovered" "unused")
+EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "backups")
 CUSTOM_CMD_NAME="dkr"
 ALLOW_CUSTOM_UPDATE_SCRIPTS="false"
 UPDATE_SHA256="optional-expected-sha256"
 UPDATE_URL="https://gh.upputuri.in/dam.sh"
 ```
 
-`SEARCH_DIRS` and `EXCLUDE_DIRS` are arrays. DAM removes and rewrites only its managed assignment lines, preserving other lines already present in the file. At startup, DAM sources this file as Bash, so it must be writable only by trusted administrators.
+`SEARCH_DIRS` and `EXCLUDE_DIRS` are arrays. DAM removes and rewrites only its managed assignment lines, preserving other lines already present in the file. At startup, DAM sources this file as Bash. Before sourcing it, DAM requires the file to be owned by `root` and rejects group- or world-writable permissions; an ownership or permission check failure stops execution. Only trusted administrators should be able to modify this file.
+
+`MAX_SEARCH_DEPTH` is not configured by the wizard. Add it manually to this file to change the default depth of `3`, for example `MAX_SEARCH_DEPTH="5"`.
 
 The wizard retains the current `UPDATE_URL` if one is configured; it does not prompt to change that URL.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-#VERSION="1.3.2"
+# VERSION="1.3.2"
 #
 # =============================================================================
 # @title        Docker App Manager (DAM)
@@ -9,12 +9,13 @@
 #               bulk operations (start, stop, update, clean) across multiple apps.
 #
 # @author       Ruthvik Upputuri
+# @copyright    Copyright (c) 2026 Ruthvik Upputuri
 # @repository   https://gh.upputuri.in/dam
 # @license      MIT License
 # @created      September 2026
 # =============================================================================
 #
-#Always run shellcheck after making changes and before committing.
+# Always run shellcheck after making changes and before committing.
 #
 # Supports all major app lifecycle operations in one script:
 #   - start   : start app containers (create if needed)
@@ -66,10 +67,32 @@ set -uo pipefail
 UPDATE_URL="https://gh.upputuri.in/dam.sh"
 CONFIG_FILE="/etc/docker-app-manager.conf"
 
-if [[ -f "$CONFIG_FILE" ]]; then
-    # Load user settings if they exist
+load_config() {
+    local file_owner
+    local file_perms
+    file_owner=$(stat -c %U "$CONFIG_FILE" 2>/dev/null)
+    file_perms=$(stat -c %a "$CONFIG_FILE" 2>/dev/null)
+    
+    if [[ "$file_owner" != "root" ]]; then
+        echo -e "\033[0;31m[ERROR]\033[0m Config file '$CONFIG_FILE' must be owned by root to prevent unauthorized execution." >&2
+        echo -e "To fix, run: sudo chown root:root \"$CONFIG_FILE\"" >&2
+        exit 1
+    fi
+    
+    local go_perms="${file_perms: -2}"
+    if [[ "${go_perms:0:1}" =~ [2367] || "${go_perms:1:1}" =~ [2367] ]]; then
+        echo -e "\033[0;31m[ERROR]\033[0m Config file '$CONFIG_FILE' has unsafe permissions. It must not be writable by non-root users." >&2
+        echo -e "To fix, run: sudo chmod 644 \"$CONFIG_FILE\"" >&2
+        exit 1
+    fi
+    
     # shellcheck source=/dev/null
     source "$CONFIG_FILE"
+}
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    # Load user settings if they exist securely
+    load_config
 else
     # Fallback defaults for quick local use if not installed
     real_user_home="$HOME"
@@ -83,13 +106,13 @@ else
             SEARCH_DIRS+=("$default_dir")
         fi
     done
-    EXCLUDE_DIRS=("recovered" "recovered-configs" "unused")
+    EXCLUDE_DIRS=("recovered" "recovered-configs" "unused" "backups")
 fi
 
 declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
 declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
 COMPOSE_FILENAMES=("compose.yaml" "compose.yml" "docker-compose.yaml" "docker-compose.yml")
-MAX_SEARCH_DEPTH="${MAX_SEARCH_DEPTH:-5}"
+MAX_SEARCH_DEPTH="${MAX_SEARCH_DEPTH:-3}"
 
 CMD_PREFIX="${CUSTOM_CMD_NAME:-}"
 if [[ -n "$CMD_PREFIX" ]]; then
@@ -366,6 +389,11 @@ docker_ready() {
         return 1
     fi
 
+    if ! command -v column &>/dev/null; then
+        echo -e "${RED}[ERROR]${NC} 'column' command not found. Please install the 'bsdmainutils' or 'util-linux' package."
+        return 1
+    fi
+
     return 0
 }
 
@@ -481,7 +509,7 @@ resolve_compose_files() {
         fi
 
         case "$action" in
-            stop|recreate|force-recreate|delete)
+            stop|kill|recreate|force-recreate|delete)
                 echo -e "${RED}  [ERROR]${NC} None of the requested compose files (${CUSTOM_COMPOSE_FILES_RAW[*]}) were found in '${folder}'. Refusing to fall back to default for '${action}'."
                 return 1
                 ;;
@@ -556,14 +584,18 @@ list_available_apps() {
             local folder_name
             folder_name="$(basename "$d")"
             local valid=false
+            local is_target=true
             if [[ ${#explicit_apps[@]} -gt 0 ]]; then
+                is_target=false
                 for e_app in "${explicit_apps[@]}"; do
                     if [[ "$e_app" == "$folder_name" ]]; then
-                        valid=true
+                        is_target=true
                         break
                     fi
                 done
-            else
+            fi
+
+            if $is_target; then
                 case "$mode" in
                     compose)
                         has_compose_files "$d" && valid=true
@@ -785,6 +817,8 @@ usage() {
     echo -e "${BOLD}Examples:${NC}"
     echo -e "  ${P_CMD}start all except <app-name>"
     echo -e "  ${P_CMD}restart <app1> <app2>"
+    echo -e "  ${P_CMD}kill <app-name>"
+    echo -e "  ${P_CMD}pause <app3>"
     echo -e "  ${P_CMD}update <app1> <app2> <app3>"
     echo -e "  ${P_CMD}delete <app-name>"
     echo -e "  ${P_CMD}cleanup vol"
@@ -815,7 +849,7 @@ usage() {
     echo -e "                     (Tip: You can append 'with vol', 'with img', etc. directly to 'delete')"
     echo -e "                     (Accepts -y/--yes to skip confirmations)"
     echo -e "  Config options:    ALLOW_CUSTOM_UPDATE_SCRIPTS=true/false, UPDATE_SHA256=hash"
-    echo -e "  -y, --yes          Skip confirmations for 'all' on destructive actions (delete)"
+    echo -e "  -y, --yes          Skip confirmations for 'all' on destructive actions (delete, kill, stop, recreate, force-recreate)"
     echo
     if [[ -n "$CMD_PREFIX" ]]; then
         echo -e "  sudo ${CMD_PREFIX} config          Re-run the setup wizard to change app directories or command name"
@@ -975,22 +1009,26 @@ cleanup_dangling_resources() {
 
     # Unused build cache layers.
     if $mode_all || $mode_buildx; then
-        local cache
-        cache="$(docker buildx du --verbose 2>/dev/null | awk '/^Total/ {print $2; exit}' || true)"
-        if [[ -n "$cache" && "$cache" != "0B" ]]; then
-            echo -e "${YELLOW}  [build cache]${NC} Removing build cache (${cache})..."
-            local out
-            if out="$(docker buildx prune -a -f 2>&1)"; then
-                # shellcheck disable=SC2001
-                sed 's/^/                 /' <<< "$out"
-            elif out="$(docker builder prune -a -f 2>&1)"; then
-                # shellcheck disable=SC2001
-                sed 's/^/                 /' <<< "$out"
-            else
-                echo -e "${RED}  [ERROR]${NC}       Build cache prune failed:\n$out" | sed 's/^/                 /'
-            fi
+        if ! docker buildx version &>/dev/null && ! docker builder prune --help &>/dev/null; then
+            echo -e "${CYAN}  [build cache]${NC} 'buildx' plugin is missing. Cannot prune."
         else
-            echo -e "${CYAN}  [build cache]${NC} No build cache to remove."
+            local cache
+            cache="$(docker buildx du --verbose 2>/dev/null | awk '/^Total/ {print $2; exit}' || true)"
+            if [[ -n "$cache" && "$cache" != "0B" ]]; then
+                echo -e "${YELLOW}  [build cache]${NC} Removing build cache (${cache})..."
+                local out
+                if out="$(docker buildx prune -a -f 2>&1)"; then
+                    # shellcheck disable=SC2001
+                    sed 's/^/                 /' <<< "$out"
+                elif out="$(docker builder prune -a -f 2>&1)"; then
+                    # shellcheck disable=SC2001
+                    sed 's/^/                 /' <<< "$out"
+                else
+                    echo -e "${RED}  [ERROR]${NC}       Build cache prune failed:\n$out" | sed 's/^/                 /'
+                fi
+            else
+                echo -e "${CYAN}  [build cache]${NC} No build cache to remove."
+            fi
         fi
     else
         echo -e "${CYAN}  [build cache]${NC} Skipped (use 'cleanup buildx' or 'cleanup all' to force prune)."
@@ -1002,7 +1040,10 @@ cleanup_dangling_resources() {
 
 run_compose_action_for_app() {
     local action="$1"
-    local folder="$2"
+    local raw_target="$2"
+    local folder="${raw_target%%:*}"
+    local service=""
+    [[ "$raw_target" == *":"* ]] && service="${raw_target#*:}"
     local dir
     find_app_dir "$folder"
     dir="$FOUND_APP_DIR"
@@ -1013,54 +1054,74 @@ run_compose_action_for_app() {
 
     pushd "$dir" > /dev/null || return 1
 
+    local dc_target=()
+    [[ -n "$service" ]] && dc_target=("$service")
+
     case "$action" in
         start)
             echo
             echo -e "${BLUE}  [1/2]${NC} Starting containers..."
-            dc up -d || { popd > /dev/null || true; return 1; }
+            dc up -d "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         stop)
             echo
             echo -e "${BLUE}  [1/2]${NC} Stopping containers..."
-            dc stop || { popd > /dev/null || true; return 1; }
+            dc stop "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         kill)
             echo
             echo -e "${BLUE}  [1/2]${NC} Killing containers (SIGKILL)..."
-            dc kill || { popd > /dev/null || true; return 1; }
+            dc kill "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         restart)
             echo
             echo -e "${BLUE}  [1/2]${NC} Restarting containers..."
-            dc restart || { popd > /dev/null || true; return 1; }
+            dc restart "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         pause)
             echo
             echo -e "${BLUE}  [1/2]${NC} Pausing containers..."
-            dc pause || { popd > /dev/null || true; return 1; }
+            dc pause "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         unpause)
             echo
             echo -e "${BLUE}  [1/2]${NC} Unpausing containers..."
-            dc unpause || { popd > /dev/null || true; return 1; }
+            dc unpause "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
             ;;
         recreate)
             echo
-            echo -e "${BLUE}  [1/3]${NC} Stopping and removing app stack..."
-            dc down --remove-orphans || { popd > /dev/null || true; return 1; }
-            echo
-            echo -e "${BLUE}  [2/3]${NC} Recreating containers..."
-            dc up -d || { popd > /dev/null || true; return 1; }
+            if [[ -n "$service" ]]; then
+                echo -e "${BLUE}  [1/2]${NC} Recreating service '${service}'..."
+                dc up -d --force-recreate "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
+            else
+                echo -e "${BLUE}  [1/3]${NC} Stopping and removing app stack..."
+                dc down --remove-orphans || { popd > /dev/null || true; return 1; }
+                echo
+                echo -e "${BLUE}  [2/3]${NC} Recreating containers..."
+                dc up -d || { popd > /dev/null || true; return 1; }
+            fi
             ;;
         force-recreate)
             echo
-            echo -e "${BLUE}  [1/3]${NC} Forcefully stopping and removing app stack..."
-            dc down --remove-orphans -t 0 || { popd > /dev/null || true; return 1; }
-            echo
-            echo -e "${BLUE}  [2/3]${NC} Force-recreating containers..."
-            dc up -d --force-recreate || { popd > /dev/null || true; return 1; }
+            if [[ -n "$service" ]]; then
+                echo -e "${BLUE}  [1/2]${NC} Force-recreating service '${service}'..."
+                dc stop -t 0 "${dc_target[@]}" || true
+                dc rm -f "${dc_target[@]}" || true
+                dc up -d --force-recreate "${dc_target[@]}" || { popd > /dev/null || true; return 1; }
+            else
+                echo -e "${BLUE}  [1/3]${NC} Forcefully stopping and removing app stack..."
+                dc down --remove-orphans -t 0 || { popd > /dev/null || true; return 1; }
+                echo
+                echo -e "${BLUE}  [2/3]${NC} Force-recreating containers..."
+                dc up -d --force-recreate || { popd > /dev/null || true; return 1; }
+            fi
             ;;
         delete)
+            if [[ -n "$service" ]]; then
+                echo -e "${RED}  [ERROR]${NC} Cannot use 'delete' on a specific service. Target the entire app."
+                popd > /dev/null || true
+                return 1
+            fi
             echo
             local app_down_args=("--remove-orphans")
             local del_vol=false
@@ -1099,19 +1160,26 @@ run_compose_action_for_app() {
     esac
 
     echo
-    if [[ "$action" == "recreate" || "$action" == "force-recreate" ]]; then
+    if [[ -n "$service" ]]; then
+        echo -e "${BLUE}  [Service Status]${NC}"
+        dc ps "${dc_target[@]}" || true
+    elif [[ "$action" == "recreate" || "$action" == "force-recreate" ]]; then
         echo -e "${BLUE}  [3/3]${NC} Current service status:"
+        dc ps -a || true
     else
         echo -e "${BLUE}  [2/2]${NC} Current service status:"
+        dc ps -a || true
     fi
-    dc ps -a || true
 
     popd > /dev/null || true
     return 0
 }
 
 run_update_action_for_app() {
-    local folder="$1"
+    local raw_target="$1"
+    local folder="${raw_target%%:*}"
+    local service=""
+    [[ "$raw_target" == *":"* ]] && service="${raw_target#*:}"
     local dir
     local rc
     find_app_dir "$folder"
@@ -1174,8 +1242,11 @@ run_update_action_for_app() {
     
     pushd "$dir" > /dev/null || return 1
 
+    local dc_target=()
+    [[ -n "$service" ]] && dc_target=("$service")
+
     local running_containers=()
-    mapfile -t running_containers < <(dc ps -q 2>/dev/null || true)
+    mapfile -t running_containers < <(dc ps -q "${dc_target[@]}" 2>/dev/null || true)
     local was_running=false
     if [[ ${#running_containers[@]} -gt 0 ]]; then
         if docker inspect -f '{{.State.Running}}' "${running_containers[@]}" 2>/dev/null | grep -q "true"; then
@@ -1183,7 +1254,11 @@ run_update_action_for_app() {
         fi
     fi
     if ! $was_running; then
-        echo -e "${CYAN}  [INFO]${NC} App currently has no running containers. It will be left stopped."
+        if [[ -n "$service" ]]; then
+            echo -e "${CYAN}  [INFO]${NC} Service currently has no running containers. It will be left stopped."
+        else
+            echo -e "${CYAN}  [INFO]${NC} App currently has no running containers. It will be left stopped."
+        fi
     fi
 
     echo
@@ -1191,14 +1266,14 @@ run_update_action_for_app() {
     local pull_help
     pull_help="$(dc pull --help 2>&1 || true)"
     if [[ "$pull_help" == *"--ignore-buildable"* ]]; then
-        if ! dc pull --ignore-buildable; then
+        if ! dc pull --ignore-buildable "${dc_target[@]}"; then
             echo -e "${RED}  [FAIL]${NC} Image pull failed for '${folder}'."
             popd > /dev/null || true
             return 1
         fi
     else
         echo -e "${YELLOW}  [WARN]${NC} 'pull --ignore-buildable' unsupported. Falling back to ignore-pull-failures for buildable services."
-        if ! dc pull --ignore-pull-failures; then
+        if ! dc pull --ignore-pull-failures "${dc_target[@]}"; then
             echo -e "${RED}  [FAIL]${NC} Image pull failed for '${folder}'."
             popd > /dev/null || true
             return 1
@@ -1207,7 +1282,7 @@ run_update_action_for_app() {
     
     echo
     echo -e "${BLUE}  [2/4]${NC} Building images (if any)..."
-    if ! dc build --pull; then
+    if ! dc build --pull "${dc_target[@]}"; then
         echo -e "${RED}  [FAIL]${NC} Image build failed for '${folder}'."
         popd > /dev/null || true
         return 1
@@ -1216,7 +1291,7 @@ run_update_action_for_app() {
     echo
     if $was_running; then
         echo -e "${BLUE}  [3/4]${NC} Recreating containers with latest images..."
-        if ! dc up -d; then
+        if ! dc up -d "${dc_target[@]}"; then
             echo -e "${RED}  [FAIL]${NC} Container recreation failed for '${folder}'."
             popd > /dev/null || true
             return 1
@@ -1227,14 +1302,17 @@ run_update_action_for_app() {
 
     echo
     echo -e "${BLUE}  [4/4]${NC} Current service status:"
-    dc ps -a || true
+    dc ps "${dc_target[@]}" || true
 
     popd > /dev/null || true
     return 0
 }
 
 run_logs_action_for_app() {
-    local folder="$1"
+    local raw_target="$1"
+    local folder="${raw_target%%:*}"
+    local service=""
+    [[ "$raw_target" == *":"* ]] && service="${raw_target#*:}"
     local dir
     find_app_dir "$folder"
     dir="$FOUND_APP_DIR"
@@ -1264,8 +1342,12 @@ run_logs_action_for_app() {
                 ;;
             last)
                 ((i++))
-                if [[ $i -lt ${#LOG_ARGS_RAW[@]} && "${LOG_ARGS_RAW[$i]}" =~ ^[0-9]+[smhd]?$ ]]; then
-                    dc_args+=("--tail" "${LOG_ARGS_RAW[$i]}")
+                if [[ $i -lt ${#LOG_ARGS_RAW[@]} ]]; then
+                    if [[ "${LOG_ARGS_RAW[$i]}" =~ ^[0-9]+$ ]]; then
+                        dc_args+=("--tail" "${LOG_ARGS_RAW[$i]}")
+                    elif [[ "${LOG_ARGS_RAW[$i]}" =~ ^[0-9]+[smhd]$ ]]; then
+                        dc_args+=("--since" "${LOG_ARGS_RAW[$i]}")
+                    fi
                 fi
                 ;;
             first)
@@ -1293,13 +1375,16 @@ run_logs_action_for_app() {
         ((i++))
     done
 
+    local dc_target=()
+    [[ -n "$service" ]] && dc_target=("$service")
+
     echo -e "${BLUE}  [1/1]${NC} Fetching logs for '${folder}'..."
     local rc=0
     if [[ -n "$head_lines" ]]; then
-        (set +o pipefail; dc logs "${dc_args[@]}" | head -n "$head_lines")
+        (set +o pipefail; dc logs "${dc_args[@]}" "${dc_target[@]}" | head -n "$head_lines")
         rc=$?
     else
-        dc logs "${dc_args[@]}"
+        dc logs "${dc_args[@]}" "${dc_target[@]}"
         rc=$?
     fi
 
@@ -1321,7 +1406,10 @@ run_debug_action_for_app() {
 
 process_app() {
     local action="$1"
-    local folder="$2"
+    local raw_target="$2"
+    local folder="${raw_target%%:*}"
+    local service=""
+    [[ "$raw_target" == *":"* ]] && service="${raw_target#*:}"
     local dir
     local rc
     find_app_dir "$folder"
@@ -1329,54 +1417,54 @@ process_app() {
     dir="$FOUND_APP_DIR"
 
     (( TOTAL++ )) || true
-    print_section "$action" "$folder"
+    print_section "$action" "$raw_target"
 
     if [[ $rc -ne 0 ]]; then
         (( FAILED++ )) || true
-        FAILED_APPS+=("$folder")
+        FAILED_APPS+=("$raw_target")
         return 1
     fi
     if [[ -z "$dir" ]]; then
         echo -e "${RED}  [ERROR]${NC} App '${folder}' not found in any search directory."
         (( FAILED++ )) || true
-        FAILED_APPS+=("$folder")
+        FAILED_APPS+=("$raw_target")
         return 1
     fi
 
     if is_excluded "$(basename "$dir")"; then
         echo -e "${YELLOW}  [SKIP]${NC} '${folder}' is excluded from operations."
         (( SKIPPED++ )) || true
-        SKIPPED_APPS+=("$folder")
+        SKIPPED_APPS+=("$raw_target")
         return 0
     fi
 
     case "$action" in
         update)
-            run_update_action_for_app "$folder" ;;
+            run_update_action_for_app "$raw_target" ;;
         logs)
-            run_logs_action_for_app "$folder" ;;
+            run_logs_action_for_app "$raw_target" ;;
         debug)
-            run_debug_action_for_app "$folder" ;;
+            run_debug_action_for_app "$raw_target" ;;
         start|stop|kill|restart|recreate|force-recreate|delete|pause|unpause)
-            run_compose_action_for_app "$action" "$folder" ;;
+            run_compose_action_for_app "$action" "$raw_target" ;;
         *)
             echo -e "${RED}  [ERROR]${NC} Unsupported action '${action}'."
             (( FAILED++ )) || true
-            FAILED_APPS+=("$folder")
+            FAILED_APPS+=("$raw_target")
             return 1
             ;;
     esac
     local action_rc=$?
 
     if [[ $action_rc -eq 0 ]]; then
-        echo -e "\n${GREEN}  [DONE]${NC} '${folder}' ${action} completed successfully."
+        echo -e "\n${GREEN}  [DONE]${NC} '${raw_target}' ${action} completed successfully."
         (( SUCCESS++ )) || true
-        SUCCESS_APPS+=("$folder")
+        SUCCESS_APPS+=("$raw_target")
         return 0
     fi
-    echo -e "\n${RED}  [FAIL]${NC} '${action}' failed for '${folder}'."
+    echo -e "\n${RED}  [FAIL]${NC} '${action}' failed for '${raw_target}'."
     (( FAILED++ )) || true
-    FAILED_APPS+=("$folder")
+    FAILED_APPS+=("$raw_target")
     return 1
 }
 
@@ -1431,7 +1519,7 @@ parse_target_apps() {
             fi
         else
             if [[ "$action" == "logs" || "$action" == "debug" ]]; then
-                if [[ "$arg" =~ ^(last|first|since|until|live|follow|time|timestamps)$ || "$arg" =~ ^[0-9]+[smhd]?$ ]]; then
+                if [[ "$arg" =~ ^(last|first|since|until|live|follow|time|timestamps)$ || "$arg" =~ ^[0-9]+[smhd]?$ || "$arg" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
                     LOG_ARGS_RAW+=("$arg")
                     continue
                 fi
@@ -1541,7 +1629,7 @@ parse_target_apps() {
     fi
 
     if [[ "${requested[0]}" == "all" ]]; then
-        if [[ "$action" == "delete" ]]; then
+        if [[ "$action" =~ ^(delete|kill|stop|recreate|force-recreate)$ ]]; then
             if ! $skip_prompt; then
                 if [[ ! -t 0 ]]; then
                     echo -e "${RED}[ERROR]${NC} Destructive action '${action} all' requires confirmation, but input is not a terminal. Use -y / --yes to force."
@@ -1565,7 +1653,7 @@ parse_target_apps() {
 COMMAND_NAME="$(basename "$0")"
 SUPPORTED_ACTIONS=("start" "stop" "kill" "restart" "recreate" "force-recreate" "frec" "delete" "cleanup" "pause" "unpause" "update" "status" "logs" "debug" "list" "get")
 
-if [[ " ${SUPPORTED_ACTIONS[*]} " =~ \ ${COMMAND_NAME}\  ]]; then
+if [[ " ${SUPPORTED_ACTIONS[*]} " == *" ${COMMAND_NAME} "* ]]; then
     set -- "$COMMAND_NAME" "$@"
 fi
 
@@ -1620,8 +1708,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
             chmod 755 "/usr/local/bin/docker-app-manager"
         fi
         if [[ -f "$CONFIG_FILE" ]]; then
-            # shellcheck source=/dev/null
-            source "$CONFIG_FILE"
+            load_config
             declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
             declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
         fi
@@ -1752,8 +1839,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
         if [[ -z "$update_only" || "$update_only" =~ ^([yY][eE][sS]|[yY])$ ]]; then
             skip_config=true
             # source the config to get the existing values
-            # shellcheck source=/dev/null
-            source "$CONFIG_FILE"
+            load_config
             declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
             declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
             input_dirs="${SEARCH_DIRS[*]:-}"
@@ -1765,8 +1851,7 @@ if [[ "${1:-}" == "install" || "${1:-}" == "config" || "${1:-}" == "uninstall" |
 
     if ! $skip_config; then
         if [[ -f "$CONFIG_FILE" ]]; then
-            # shellcheck source=/dev/null
-            source "$CONFIG_FILE"
+            load_config
             declare -p SEARCH_DIRS &>/dev/null || SEARCH_DIRS=()
             declare -p EXCLUDE_DIRS &>/dev/null || EXCLUDE_DIRS=()
         fi

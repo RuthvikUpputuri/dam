@@ -49,9 +49,11 @@ jobs:
           
           # Update the version safely in dam.sh
           CURRENT_VERSION_ESCAPED="${CURRENT_VERSION//./\\.}"
-          sed -i "s/^#VERSION=\"${CURRENT_VERSION_ESCAPED}\"/#VERSION=\"${NEW_VERSION}\"/g" dam.sh
+          sed -i "s/^# \?VERSION=\"${CURRENT_VERSION_ESCAPED}\"/# VERSION=\"${NEW_VERSION}\"/" dam.sh
           
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "PREV_TAG=v$CURRENT_VERSION" >> $GITHUB_ENV
+          echo "TRIGGER_SHA=${{ github.sha }}" >> $GITHUB_ENV
 
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6
@@ -74,7 +76,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use the official GitHub CLI to create the release and tag
-          gh release create "v${{ env.NEW_VERSION }}" \
-            --title "v${{ env.NEW_VERSION }}" \
-            --generate-notes
+          REPO_URL="https://github.com/${{ github.repository }}"
+          RANGE="${PREV_TAG}..${TRIGGER_SHA}"
+          NOTES=release_notes.md
+          : > "$NOTES"
+
+          # Group commits by conventional-commit prefix; skip bot release commits
+          section() {
+            local title="$1" pattern="$2" out
+            out=$(git log --no-merges --format='%h%x09%s' "$RANGE" \
+              | grep -v $'\t🚀 Release v' \
+              | grep -E "$pattern" \
+              | while IFS=$'\t' read -r sha subj; do
+                  subj=$(sed -E 's/^[a-zA-Z]+(\([^)]*\))?!?: *//' <<< "$subj")
+                  echo "- ${subj} ([\`${sha}\`](${REPO_URL}/commit/${sha}))"
+                done)
+            [[ -n "$out" ]] && printf '### %s\n\n%s\n\n' "$title" "$out" >> "$NOTES"
+            return 0
+          }
+
+          echo "## What's Changed" >> "$NOTES"
+          echo >> "$NOTES"
+          section "✨ New Features"   $'\t(feat)(\\(.*\\))?!?:'
+          section "🐛 Bug Fixes"      $'\t(fix)(\\(.*\\))?!?:'
+          section "📚 Documentation"  $'\t(docs)(\\(.*\\))?!?:'
+          section "⚙️ CI & Maintenance" $'\t(ci|chore|build|refactor|perf|test|style)(\\(.*\\))?!?:'
+          # Anything without a recognised prefix
+          other=$(git log --no-merges --format='%h%x09%s' "$RANGE" \
+            | grep -v $'\t🚀 Release v' \
+            | grep -Ev $'\t(feat|fix|docs|ci|chore|build|refactor|perf|test|style)(\\(.*\\))?!?:' \
+            | while IFS=$'\t' read -r sha subj; do
+                echo "- ${subj} ([\`${sha}\`](${REPO_URL}/commit/${sha}))"
+              done)
+          [[ -n "$other" ]] && printf '### 🔧 Other Changes\n\n%s\n\n' "$other" >> "$NOTES"
+
+          # Commit bodies carry the detailed explanation
+          details=$(git log --no-merges --reverse --format='#### %s%n%n%b%n' "$RANGE" \
+            | awk 'BEGIN{RS="#### ";ORS=""} NR>1 { n=split($0,l,"\n"); body=""; for(i=2;i<=n;i++) body=body l[i] "\n"; if (body ~ /[^[:space:]]/ && l[1] !~ /^🚀 Release v/) print "#### " $0 }')
+          [[ -n "$details" ]] && printf '### 📝 Details\n\n%s\n\n' "$details" >> "$NOTES"
+
+          printf '### 📄 Changed Files\n\n```\n%s\n```\n\n' \
+            "$(git diff --stat "${PREV_TAG}" "${TRIGGER_SHA}" | tail -n 20)" >> "$NOTES"
+          printf '**Full Changelog**: %s/compare/%s...v%s\n' \
+            "$REPO_URL" "$PREV_TAG" "$NEW_VERSION" >> "$NOTES"
+
+          gh release create "v${NEW_VERSION}" \
+            --title "v${NEW_VERSION}" \
+            --notes-file "$NOTES"

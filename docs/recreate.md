@@ -6,7 +6,9 @@ This document explains exactly how DAM's `recreate` command works, including con
 
 ## Overview
 
-The `recreate` command performs a clean restart of the entire app stack. Unlike `restart`, which merely bounces existing containers in-place, `recreate` gracefully tears down the application's containers and networks, and then brings them back up from scratch. This guarantees that any changes made to the `compose.yaml` file are fully applied without losing persistent data.
+With an app-only target, `recreate` performs a clean restart of the entire app stack. Unlike `restart`, which merely bounces existing containers in-place, it gracefully tears down the application's containers and networks, and then brings them back up from scratch. This applies Compose-file changes without removing persistent data. A service target uses the narrower behavior described below.
+
+For `<app>:<service>`, DAM does not tear down the whole project. It runs `docker compose up -d --force-recreate <service>` and then shows status for that service.
 
 > **Note**: If an app is completely unresponsive or hung and a graceful teardown is insufficient, you can use the aggressive [force-recreate](force-recreate.md) (or `frec`) command instead.
 

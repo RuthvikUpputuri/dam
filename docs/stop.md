@@ -8,6 +8,14 @@ This document explains exactly how DAM's `stop` command works, including contain
 
 The `stop` command safely halts running containers for the selected apps without removing any resources. It uses standard Docker Compose operations to gracefully terminate processes while preserving all data, logs, and configuration.
 
+To stop one service only, use `<app>:<service>`:
+
+```bash
+dkr stop <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose stop` and displays status for that service.
+
 ---
 
 ## Stop Flow

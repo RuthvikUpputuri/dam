@@ -8,6 +8,14 @@ This document explains exactly how DAM's `start` command works, including contai
 
 The `start` command is designed to be robust. Rather than simply issuing a `docker compose start` (which only starts existing, stopped containers without evaluating configuration), DAM uses `docker compose up -d`. This ensures that any recent configuration changes to the Compose file are applied and containers are created if they don't already exist.
 
+Use `<app>:<service>` to start one service rather than the whole project:
+
+```bash
+dkr start <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose up -d` and displays status for that service.
+
 ---
 
 ## Start Flow

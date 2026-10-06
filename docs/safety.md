@@ -10,6 +10,7 @@ This document covers DAM's safety mechanisms, security considerations, and destr
 | :------ | :-------------- | :-------------------- |
 | `delete <app>` | Containers, networks (project-level) | No (single app) |
 | `delete all` | Containers, networks for ALL apps | Yes - must type `"yes"` (or pass `-y`) |
+| `kill/stop/recreate/force-recreate all` | Action on ALL apps globally | Yes - must type `"yes"` (or pass `-y`) |
 | `delete <app> with vol` | + Named/anonymous volumes | No additional prompt |
 | `delete <app> with img` | + All images used by services | No additional prompt |
 | `delete <app> with buildx`| + Prunes build cache globally afterwards | No additional prompt |
@@ -21,8 +22,8 @@ This document covers DAM's safety mechanisms, security considerations, and destr
 | `cleanup net` | **All** unused networks system-wide | Yes - `y/N` prompt |
 | `cleanup buildx`| **All** build cache system-wide | No |
 | `cleanup all` | All of the above (img, vol, net, buildx) | Yes - separate prompts |
-| `force-recreate` | Containers (immediate kill, no grace period) | No |
-| `recreate` | Containers (graceful shutdown) | No |
+| `force-recreate` | Containers (immediate kill, no grace period) | No (single app) |
+| `recreate` | Containers (graceful shutdown) | No (single app) |
 
 ---
 
@@ -244,7 +245,7 @@ bash "$(basename "$custom_script")"
 source "$CONFIG_FILE"
 ```
 
-The config file (`/etc/docker-app-manager.conf`) is sourced as Bash. If an attacker can write to this file, they can execute arbitrary code. However, the file is in `/etc/` which requires root access to modify.
+The config file (`/etc/docker-app-manager.conf`) is sourced as Bash. Before sourcing it, DAM verifies that it is owned by `root` and is not group- or world-writable; it exits if either check fails. This protects against ordinary unprivileged modification, but root and other privileged actors remain trusted.
 
 ### Self-Update Security
 

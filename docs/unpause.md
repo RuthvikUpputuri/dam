@@ -8,6 +8,14 @@ This document details the behavior, execution flow, and selection mechanics of D
 
 Resumes containers that have been suspended using the `pause` command. The processes inside the containers will continue execution exactly where they left off, without restarting or losing their in-memory state.
 
+Use `<app>:<service>` to unpause only one service:
+
+```bash
+dkr unpause <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose unpause` and displays status for that service.
+
 ---
 
 ## Syntax

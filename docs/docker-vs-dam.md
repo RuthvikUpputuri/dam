@@ -205,10 +205,12 @@ This is a common source of confusion that DAM helps abstract away:
 
 When you run `dkr start <app-name>`, you're specifying the **directory name** (which maps to the project name). DAM resolves this to a directory, finds the Compose file, and runs `docker compose up -d` - you never need to know the service names or container names.
 
-For the `get` command, DAM supports targeting specific services with `app:service` syntax:
+DAM supports targeting specific services for lifecycle actions, `logs`, `update`, and `get` with the `app:service` syntax. `list` and `status` are app-level queries, and `delete` rejects service targets because it removes the whole project:
 
 ```bash
-dkr get <app-name>:postgres vol    # Get volumes for the postgres service in the <app-name> project
+dkr start <app-name>:postgres       # Start only the postgres service inside <app-name>
+dkr logs <app-name>:web last 10     # View logs only for the web service
+dkr get <app-name>:postgres vol     # Get volumes for the postgres service
 dkr get <app-name> vol              # Get volumes for ALL services in the <app-name> project
 ```
 

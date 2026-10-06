@@ -24,7 +24,7 @@ dkr list
 
 ### Discovery Process
 1. DAM iterates through all valid directories defined in `SEARCH_DIRS` (from `/etc/docker-app-manager.conf`).
-2. It respects the `MAX_SEARCH_DEPTH` (default is 5).
+2. It respects the `MAX_SEARCH_DEPTH` (default is 3).
 3. It ignores any directories matching the names in `EXCLUDE_DIRS`.
 4. It identifies valid "apps" by looking for standard compose files (`compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml`) or custom update scripts (`update*.sh`).
 

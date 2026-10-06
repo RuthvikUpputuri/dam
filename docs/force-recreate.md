@@ -1,6 +1,6 @@
 # Force-Recreate Semantics
 
-`force-recreate` tears down a Compose project with no shutdown grace period, then creates fresh containers even when Compose sees no configuration or image change. `frec` is an exact alias for the command.
+For an app-only target, `force-recreate` tears down a Compose project with no shutdown grace period, then creates fresh containers even when Compose sees no configuration or image change. `frec` is an exact alias for the command.
 
 ## Syntax
 
@@ -14,6 +14,14 @@
 ```
 
 App names are directory names, not Compose service or container names. DAM resolves them from its configured search directories. The `all` selector includes discovered Compose applications except names configured in `EXCLUDE_DIRS`; `all except` validates every excluded name before doing work.
+
+Use `<app>:<service>` to force-recreate one service without taking down the whole project:
+
+```bash
+<cmd> force-recreate <app>:<service>
+```
+
+For a service target, DAM runs `stop -t 0` and `rm -f` for that service (ignoring errors from those two preparatory commands), then runs `up -d --force-recreate <service>`. The project-wide `down` flow below applies when no service is specified.
 
 ## Per-App Flow
 
@@ -29,7 +37,8 @@ It changes into that directory and runs the available Compose implementation, pr
 ```bash
 docker compose [-f <file>...] down --remove-orphans -t 0
 docker compose [-f <file>...] up -d --force-recreate
-docker compose ps
+docker compose ps # whole app target
+docker compose ps <service> # service target
 ```
 
 The final status command is informational. A failure to print status does not change an otherwise successful teardown and startup result.
@@ -57,10 +66,11 @@ docker compose [-f <file>...] up -d --force-recreate
 ### Step 3: Status Display
 
 ```bash
-docker compose ps
+docker compose ps # whole app target
+docker compose ps <service> # service target
 ```
 
-DAM displays the resulting service state and records the app as successful only when both the teardown and startup commands succeed.
+DAM displays the resulting service state. For an app-only target, the action succeeds only when both the teardown and startup commands succeed. In the service-target form, errors from the preliminary `stop -t 0` and `rm -f` are ignored; the final `up` result determines success.
 
 ## Explicit Compose Files
 
@@ -72,7 +82,7 @@ DAM processes selected apps sequentially. An app that cannot be found, resolves 
 
 Excluded applications are skipped, even when explicitly named. `force-recreate` requires a reachable Docker daemon and either supported Compose implementation before it starts selection processing.
 
-No confirmation is required for a single app or for `all`; the operation is disruptive but not treated as a data-removal command by DAM. Take application-level backups and use [recreate.md](recreate.md) when a normal shutdown is sufficient.
+A single-app operation does not require confirmation. `force-recreate all` (including `all except`) requires the exact interactive response `yes`, unless `-y`/`--yes` is supplied. The operation is disruptive but does not remove volumes or images; use [recreate.md](recreate.md) when a normal shutdown is sufficient.
 
 ## Examples
 
@@ -91,5 +101,5 @@ dkr force-recreate all except <app3> <app4>
 
 - It does not pull newer images or rebuild local images. Use [update.md](update.md) for that workflow.
 - It does not remove named volumes or service images.
-- It does not target one service within a project; every Compose service in the application directory is affected.
+- With an app-only target, it affects the whole Compose project. With `app:service`, it uses the service-specific stop/remove/up flow described above instead.
 - It does not support Swarm or Kubernetes.

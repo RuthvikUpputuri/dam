@@ -10,6 +10,14 @@ The `kill` command forcefully halts running containers for the selected apps wit
 
 This is extremely useful when containers are frozen, unresponsive, or when you need to shut down an app immediately without waiting for standard shutdown procedures.
 
+To kill one service only, use `<app>:<service>`:
+
+```bash
+dkr kill <app-name>:<service>
+```
+
+DAM passes the service name to `docker compose kill` and displays status for that service.
+
 ---
 
 ## Kill Flow
