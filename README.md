@@ -171,7 +171,7 @@ docker compose version   # or: docker-compose --version
 Run the one-line installation script. This will automatically download the latest version, make it executable, and trigger the interactive setup:
 
 ```bash
-sudo curl -fsSL https://gh.upputuri.in/dam.sh -o /tmp/dam.sh && sudo chmod +x /tmp/dam.sh && sudo /tmp/dam.sh install && rm /tmp/dam.sh
+curl -fsSL https://gh.upputuri.in/dam.sh -o /tmp/dam.sh && chmod +x /tmp/dam.sh && sudo /tmp/dam.sh install && rm /tmp/dam.sh
 ```
 
 The installer will:
